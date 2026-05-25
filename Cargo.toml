@@ -13,7 +13,6 @@ readme = "README.md"
 
 [lib]
 crate-type = ["cdylib"]
-path = "src/main.rs"
 
 [dependencies]
 # TODO: pin to a version verified against Zellij 0.44.3 in the first
