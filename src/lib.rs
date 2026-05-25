@@ -45,9 +45,11 @@ impl ZellijPlugin for State {
             PermissionType::WriteToStdin,
             // Accept RPC over `zellij pipe`.
             PermissionType::ReadCliPipes,
-            // Capture scrollback for the observability surface
-            // (status, "what did this teammate just do" hover, etc).
-            PermissionType::ReadPaneContents,
+            // TODO: `PermissionType::ReadPaneContents` was added in
+            // zellij-tile 0.44; once we bump the dep, request it so we
+            // can capture pane scrollback for the observability
+            // surface (status, "what did this teammate just do"
+            // hover, etc).
         ]);
 
         // Pane lifecycle events. The shim CLI tells us *what* to spawn;
