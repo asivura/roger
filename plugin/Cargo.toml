@@ -18,4 +18,4 @@ crate-type = ["cdylib"]
 # TODO: bump to 0.44 in Phase E (#13) to gain PermissionType::ReadPaneContents
 # for the observability features. zellij-tile 0.43.1 is the version verified
 # against the lab box's Zellij 0.44.3 today.
-zellij-tile = "0.43"
+zellij-tile = "0.44"
