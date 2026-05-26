@@ -58,23 +58,29 @@ focus stealing, native pane IDs without translation).
 
 ## Building
 
-The Wasm plugin will eventually build with:
+The repo ships a `rust-toolchain.toml` that pins stable Rust and
+`wasm32-wasip1`, so `cargo` auto-installs both on first invocation.
+The workspace has two crates, each with its own canonical command
+(aliased in `.cargo/config.toml`):
 
 ```bash
-rustup target add wasm32-wasip1
-cargo build --release -p roger --target wasm32-wasip1
-# output: target/wasm32-wasip1/release/roger.wasm
+cargo build-wasm    # release Wasm plugin -> target/wasm32-wasip1/release/roger.wasm
+cargo build-shim    # release shim binary  -> target/release/tmux
+cargo check-all     # plugin clippy
+cargo check-shim    # shim clippy
 ```
 
-Loading into Zellij will be:
+Loading the plugin into Zellij:
 
 ```bash
 zellij plugin -- file:$PWD/target/wasm32-wasip1/release/roger.wasm
 # Or persist via `load_plugins { "file:..." }` in ~/.config/zellij/config.kdl
 ```
 
-Detailed build and install instructions land in a follow-up commit
-once the scaffold actually compiles end-to-end.
+Detailed install instructions for the shim (PATH ordering, env
+setup) land in [#12](https://github.com/asivura/roger/issues/12).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the verify-before-pushing
+recipe.
 
 ## Why "roger"?
 

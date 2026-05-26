@@ -1,32 +1,22 @@
-[package]
-name = "roger"
-version = "0.1.0"
+[workspace]
+members = ["plugin", "shim"]
+resolver = "2"
+
+[workspace.package]
 edition = "2021"
 authors = ["Alexander Sivura <alexander@sivura.com>"]
-description = "A Zellij plugin for orchestrating Claude Code agent teams as native panes."
+license = "MIT"
 repository = "https://github.com/asivura/roger"
 homepage = "https://github.com/asivura/roger"
-license = "MIT"
-keywords = ["zellij", "claude-code", "agent-teams", "plugin", "wasm"]
-categories = ["development-tools"]
-readme = "README.md"
-
-[lib]
-crate-type = ["cdylib"]
-
-[dependencies]
-# TODO: pin to a version verified against Zellij 0.44.3 in the first
-# successful build. zellij-tile 0.43 is the current public release at
-# the time of repo creation; bump as needed.
-zellij-tile = "0.43"
 
 [profile.release]
 lto = true
 opt-level = "s"
 strip = true
 # Panics can't usefully unwind across the wasi boundary into Zellij;
-# `abort` removes the unwinding machinery and lands a 5-15% size win
-# on the resulting .wasm.
+# `abort` removes the unwinding machinery and lands a measurable
+# size win on the resulting .wasm. The shim inherits this too, which
+# is fine — the shim should also panic-then-abort on fatal errors.
 panic = "abort"
 # Gives LTO more to chew on. Slower release build, smaller binary.
 codegen-units = 1

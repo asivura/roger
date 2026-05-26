@@ -33,23 +33,28 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Run clippy
-        # --lib (not --all-targets) because the crate is a cdylib only.
-        # --all-features future-proofs as features are added.
-        # --no-deps lints our code, not transitive deps. Workspace-ready
-        # for #4: once shim/ joins, this command stays correct since
-        # --lib explicitly excludes bins.
-        run: cargo clippy --target wasm32-wasip1 --all-features --lib --no-deps -- -D warnings
+      - name: Clippy (plugin, wasm)
+        # --lib because the plugin is a cdylib only.
+        # --no-deps lints our code, not transitive deps.
+        run: cargo clippy -p roger --target wasm32-wasip1 --all-features --lib --no-deps -- -D warnings
 
-      - name: Build release
-        run: cargo build --release --target wasm32-wasip1
+      - name: Clippy (shim, host)
+        run: cargo clippy -p roger-shim --all-features --all-targets --no-deps -- -D warnings
 
-      - name: Upload Wasm artifact
+      - name: Build plugin (wasm)
+        run: cargo build --release -p roger --target wasm32-wasip1
+
+      - name: Build shim (host)
+        run: cargo build --release -p roger-shim
+
+      - name: Upload artifacts (plugin + shim)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: roger-wasm-${{ github.sha }}
-          path: target/wasm32-wasip1/release/roger.wasm
+          name: roger-artifacts-${{ github.sha }}
+          path: |
+            target/wasm32-wasip1/release/roger.wasm
+            target/release/tmux
           if-no-files-found: error
           retention-days: 14
 

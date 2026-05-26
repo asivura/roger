@@ -31,7 +31,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `cargo check-all` matching the CI invocations exactly.
   ([#26](https://github.com/asivura/roger/pull/26))
 - `CONTRIBUTING.md`, `RELEASING.md`, `CHANGELOG.md`, and a PR
-  template documenting the project conventions. (this PR)
+  template documenting the project conventions.
+  ([#27](https://github.com/asivura/roger/pull/27))
+- Cargo workspace restructure: code is now split across `plugin/`
+  (package `roger`, the Wasm crate) and `shim/` (package
+  `roger-shim`, a host-target binary named `tmux` that will translate
+  Claude Code's TmuxBackend invocations into roger RPC calls in
+  Phase C). Shim is a v0 stub today. (this PR)
+- `cargo build-shim` / `cargo check-shim` aliases for the host-target
+  shim crate. (this PR)
 
 ### Changed
 

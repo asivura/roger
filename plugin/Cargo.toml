@@ -1,0 +1,21 @@
+[package]
+name = "roger"
+version = "0.1.0"
+description = "A Zellij plugin for orchestrating Claude Code agent teams as native panes."
+keywords = ["zellij", "claude-code", "agent-teams", "plugin", "wasm"]
+categories = ["development-tools"]
+readme = "../README.md"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# TODO: bump to 0.44 in Phase E (#13) to gain PermissionType::ReadPaneContents
+# for the observability features. zellij-tile 0.43.1 is the version verified
+# against the lab box's Zellij 0.44.3 today.
+zellij-tile = "0.43"
