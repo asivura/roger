@@ -132,7 +132,6 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   subscriptions per the project's "don't design for hypothetical
   future requirements" rule. Closes #55.
   ([#56](https://github.com/asivura/roger/pull/56))
-
 - Renamed cargo alias `check-all` → `check-plugin` for consistency
   with `check-shim` and `check-proto`. The old name was misleading
   (it never checked all crates, only the plugin) and was getting
