@@ -108,13 +108,31 @@ struct State {
     /// Cumulative seconds elapsed across all `Event::Timer` ticks the
     /// plugin has seen. The Wasm sandbox doesn't expose a
     /// monotonic clock (`std::time::Instant::now()` is unreliable on
-    /// `wasm32-wasip1`), so we accumulate `Event::Timer(elapsed)`
-    /// payloads as a proxy. Used to age `pending_spawns` against
-    /// `SPAWN_WATCHDOG_TTL_SECS`.
+    /// `wasm32-wasip1`), so we accumulate the `f64` payload of each
+    /// `Event::Timer` as a proxy. The payload is the wall-clock
+    /// elapsed time since `set_timeout` was called (verified by the
+    /// zellij-api reviewer on PR #57 against
+    /// `zellij-server/src/.../wasm_bridge.rs` and the protobuf
+    /// definition) — close to but generally ≥ the requested
+    /// duration due to scheduling jitter. Note: that payload
+    /// round-trips through protobuf as `f32`, so sub-second tick
+    /// intervals lose precision; not a concern at our 5s cadence
+    /// but worth flagging if `SPAWN_WATCHDOG_TICK_SECS` is ever
+    /// dropped to sub-second values. Used to age `pending_spawns`
+    /// against `SPAWN_WATCHDOG_TTL_SECS`.
     watchdog_elapsed_secs: f64,
-    /// `true` while a `set_timeout` is outstanding. Prevents stacking
-    /// duplicate timers when multiple spawns are concurrently
-    /// pending — one tick is enough to sweep all of them.
+    /// `true` while a `set_timeout` is outstanding. **Load-bearing
+    /// for correctness, not just efficiency** — each `set_timeout`
+    /// call spawns an independent host-side task in
+    /// `zellij-tile 0.43.1`, and there is no `clear_timeout` to
+    /// cancel one. Without this guard, calling `set_timeout`
+    /// multiple times in flight would deliver multiple
+    /// `Event::Timer` events, which would double-count elapsed time
+    /// against `watchdog_elapsed_secs` (since each event payload is
+    /// "elapsed since that timer's set_timeout call", they overlap
+    /// rather than tile). The guard ensures exactly one in-flight
+    /// timer at a time. Cleared at the top of `on_watchdog_tick` so
+    /// the next arm-request gets honored.
     watchdog_armed: bool,
 }
 
@@ -626,8 +644,13 @@ impl State {
             .collect();
 
         for token in expired {
-            // `remove(&token)` returns `Some` here — we just collected
-            // these tokens from the same map and we have `&mut self`.
+            // `remove(&token)` returns `Some` here. We just collected
+            // these tokens from the same map. The Wasm plugin sandbox
+            // is single-threaded and runs one event callback at a
+            // time — no other code path can mutate `pending_spawns`
+            // between the `filter` collection above and this remove
+            // (so `&mut self` isn't what makes this safe; the
+            // sandbox's no-reentrancy guarantee is).
             let pending = self
                 .pending_spawns
                 .remove(&token)
