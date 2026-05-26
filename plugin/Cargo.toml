@@ -19,6 +19,9 @@ crate-type = ["cdylib"]
 # for the observability features. zellij-tile 0.43.1 is the version verified
 # against the lab box's Zellij 0.44.3 today.
 zellij-tile = "0.43"
-# JSON-RPC over `zellij pipe` (the RPC protocol from #5).
-serde = { version = "1", features = ["derive"] }
+# Wire types for the RPC protocol. Lives in its own crate so it can
+# be tested on host target without the zellij-tile link error.
+roger-proto = { path = "../proto" }
+# Used directly here (not just through roger-proto) for `serde_json::from_str`,
+# `from_value`, and the fallback string formatting in lib.rs.
 serde_json = "1"

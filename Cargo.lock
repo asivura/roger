@@ -2194,9 +2194,17 @@ dependencies = [
 name = "roger"
 version = "0.1.0"
 dependencies = [
- "serde",
+ "roger-proto",
  "serde_json",
  "zellij-tile",
+]
+
+[[package]]
+name = "roger-proto"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

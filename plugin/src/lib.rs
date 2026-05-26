@@ -16,13 +16,11 @@
 //!   - lifecycle wiring (#8) that populates the state map
 //!     `CommandPaneOpened` / `CommandPaneExited` react to.
 
-mod rpc;
-
 use std::collections::{BTreeMap, HashMap};
 
 use zellij_tile::prelude::*;
 
-use rpc::{error_codes, Request, Response, TeamListResult, TeammatePaneInfo};
+use roger_proto::{error_codes, Request, Response, TeamListResult, TeammatePaneInfo};
 
 #[derive(Default)]
 struct State {

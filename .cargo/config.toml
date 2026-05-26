@@ -10,9 +10,13 @@
 
 [alias]
 # Plugin (Wasm target).
-build-wasm = "build --release -p roger --target wasm32-wasip1"
-check-all  = "clippy -p roger --target wasm32-wasip1 --all-features --lib --no-deps -- -D warnings"
+build-wasm   = "build --release -p roger --target wasm32-wasip1"
+check-plugin = "clippy -p roger --target wasm32-wasip1 --all-features --lib --no-deps -- -D warnings"
 
 # Shim (host target).
 build-shim = "build --release -p roger-shim"
 check-shim = "clippy -p roger-shim --all-features --all-targets --no-deps -- -D warnings"
+
+# Proto (host target — pure crate, host-testable).
+test-proto  = "test -p roger-proto"
+check-proto = "clippy -p roger-proto --all-features --all-targets --no-deps -- -D warnings"

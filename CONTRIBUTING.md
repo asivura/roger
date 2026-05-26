@@ -34,7 +34,7 @@ CI runs. Two per crate (plugin = Wasm target, shim = host target):
 ```bash
 # Plugin (the Wasm artifact)
 cargo build-wasm    # release build  -> target/wasm32-wasip1/release/roger.wasm
-cargo check-all     # clippy with -D warnings
+cargo check-plugin  # clippy with -D warnings
 
 # Shim (the host-target `tmux`-shaped binary)
 cargo build-shim    # release build  -> target/release/tmux
@@ -50,8 +50,9 @@ cargo test                   # run tests (once any exist)
 ```
 
 **Verify before pushing**: run `cargo fmt --all -- --check`,
-`cargo check-all`, `cargo check-shim`, `cargo build-wasm`, and
-`cargo build-shim` locally. If all five are clean, CI will be clean.
+`cargo check-plugin`, `cargo check-shim`, `cargo test-proto`,
+`cargo build-wasm`, and `cargo build-shim` locally. If all six are
+clean, CI will be clean.
 
 ## Branch naming
 
@@ -138,8 +139,10 @@ someone else has pushed to the branch since your last fetch.
 
 1. Create a branch off the latest `main`.
 2. Make focused commits using the conventions above.
-3. Before opening: rebase onto `main`, run `cargo check-all` and
-   `cargo build-wasm` locally.
+3. Before opening: rebase onto `main`, run `cargo check-plugin`,
+   `cargo check-shim`, `cargo test-proto`, `cargo build-wasm`, and
+   `cargo build-shim` locally (see the "Verify before pushing"
+   recipe above).
 4. Open the PR via `gh pr create` or the web UI. Fill out the
    [PR template](.github/PULL_REQUEST_TEMPLATE.md).
 5. CI runs `build` and `commit lint`. Both must pass.

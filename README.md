@@ -66,7 +66,7 @@ The workspace has two crates, each with its own canonical command
 ```bash
 cargo build-wasm    # release Wasm plugin -> target/wasm32-wasip1/release/roger.wasm
 cargo build-shim    # release shim binary  -> target/release/tmux
-cargo check-all     # plugin clippy
+cargo check-plugin  # plugin clippy
 cargo check-shim    # shim clippy
 ```
 
