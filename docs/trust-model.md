@@ -69,7 +69,7 @@ is defended, the extension isn't.
 `State::teammates` insertion is gated to a single site
 (`on_command_pane_opened`, only reachable after the plugin itself
 called `open_command_pane`). That gate is also load-bearing — see
-the `State::teammates` doc-comment in `plugin/src/lib.rs` — but it
+the `State::teammates` doc-comment in `plugin/src/main.rs` — but it
 relies on the producer's trust to begin with. A trusted caller can
 still legitimately cause arbitrary teammate spawns; that's the
 feature, not a bug.

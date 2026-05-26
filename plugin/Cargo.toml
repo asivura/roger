@@ -12,30 +12,37 @@ repository.workspace = true
 homepage.workspace = true
 
 # The plugin is built as a binary (not a cdylib library) so the
-# wasm output gets `_start` + `__main_void` exports that Zellij
-# 0.44.3's plugin host expects. zellij-tile's `register_plugin!`
-# macro emits `fn main()`, which only becomes a `_start` export when
-# the crate type is a binary.
+# wasm output gets `_start` + `__main_void` exports that Zellij's
+# plugin host invokes to initialize the wasm instance. The wasi-sdk
+# crt only wraps `fn main()` into a `_start` export for binary
+# crates on wasm32-wasip1; cdylibs emit no `_start` because they're
+# libraries. zellij-tile's `register_plugin!` macro emits the
+# `fn main()` that ends up wrapped — but only when this crate is
+# built as `[[bin]]`, not `[lib] crate-type = ["cdylib"]`.
 [[bin]]
 name = "roger"
 path = "src/main.rs"
 
 [dependencies]
-# Bumped to 0.44 to match the host Zellij 0.44.3 plugin ABI. The host
-# rejects 0.43-built plugins with "could not find exported function"
-# (the wasm export contract changed between 0.43 and 0.44). The
-# ReadPaneContents permission becomes available with this bump but is
-# requested separately (it's a Phase E observability feature, not
-# load-bearing for v0.1).
+# Bumped to 0.44 to match the host Zellij 0.44.3 plugin ABI. The
+# `zellij-tile` crate's public API (the `register_plugin!` macro, the
+# `ZellijPlugin` trait, the `shim` functions our handlers call) is
+# byte-identical between 0.43.1 and 0.44.3 — the breaking change
+# lives in the transitive `zellij-utils` protobuf wire types that
+# both `zellij-tile` and the Zellij host use to exchange events. A
+# 0.43-built plugin handed a 0.44-host event fails to decode the
+# protobuf and emits "could not find exported function" on the host
+# side. `ReadPaneContents` (added in 0.44) is requested separately
+# (Phase E #13).
 zellij-tile = "0.44"
 # Wire types for the RPC protocol. Lives in its own crate so it can
 # be tested on host target without the zellij-tile link error.
 roger-proto = { path = "../proto" }
 # Used directly here (not just through roger-proto) for `serde_json::from_str`,
-# `from_value`, and the fallback string formatting in lib.rs.
+# `from_value`, and the fallback string formatting in main.rs.
 serde_json = "1"
 # `serde::de::DeserializeOwned` is the trait bound on the
-# `parse_params<T>` helper in lib.rs. We don't request `derive` here
+# `parse_params<T>` helper in main.rs. We don't request `derive` here
 # — the derived `Deserialize` impls already live in roger-proto.
 # Note: Cargo's feature unification will still enable `serde/derive`
 # in the final build because roger-proto pulls it transitively;
