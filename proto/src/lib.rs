@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 /// its own typed params struct without inflating this top-level type.
 /// `team.list` takes no params and never reads the field; `team.spawn`
 /// (#6) and `team.send` / `team.kill` (#7) will.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
     pub method: String,
     pub id: String,
@@ -39,12 +39,12 @@ pub struct Request {
 /// The "exactly one" invariant is enforced by convention via
 /// `Response::ok` / `Response::err`; a stronger compile-time guarantee
 /// (untagged enum) is tracked in #37.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Response {
     pub id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub result: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub error: Option<ErrorPayload>,
 }
 
@@ -71,7 +71,7 @@ impl Response {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorPayload {
     pub code: i32,
     pub message: String,

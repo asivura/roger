@@ -118,6 +118,28 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   up unnecessarily. Closes #45 — removes the only entry from
   the previous `Known limitations` section.
   ([#57](https://github.com/asivura/roger/pull/57))
+- `roger-shim` is now a real binary instead of a stub. Implements
+  the eight real tmux translations Claude Code's `TmuxBackend`
+  uses — `display-message`, `has-session`, `new-session`,
+  `new-window`, `split-window`, `list-panes`, `send-keys`,
+  `kill-pane` — each routed through the matching plugin RPC
+  method (`team.list`, `team.spawn`, `team.send`, `team.kill`).
+  Cosmetic ops (`select-pane`, `set-option`, layout commands,
+  etc.) are accepted silently; unknown subcommands log a warning
+  to stderr and exit 0 so future Claude additions degrade rather
+  than crash. Outside a Zellij session (`ZELLIJ_SESSION_NAME`
+  unset) the shim exits 2 with a clear error. `-S <socket>` and
+  `-L <name>` global tmux flags are accepted and ignored. New
+  modules `shim/src/rpc.rs` (JSON-RPC client over `zellij pipe`),
+  `shim/src/pane_id.rs` (parse / render `%<n>`), and
+  `shim/src/commands/*.rs` (per-subcommand handlers). 27 unit
+  tests covering argv parsing, key-token rendering, pane-id
+  parsing, and global-flag stripping. New `docs/shim.md`
+  documenting the command surface and v0.1 limitations (notably
+  the spawn-shell-then-send-keys workaround for the empty-pane
+  semantic mismatch). End-to-end exercise against Claude
+  `--teammate-mode tmux` is Phase D (#11). Closes #9, closes #10.
+  ([#58](https://github.com/asivura/roger/pull/58))
 
 ### Changed
 
