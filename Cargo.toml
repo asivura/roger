@@ -24,3 +24,9 @@ zellij-tile = "0.43"
 lto = true
 opt-level = "s"
 strip = true
+# Panics can't usefully unwind across the wasi boundary into Zellij;
+# `abort` removes the unwinding machinery and lands a 5-15% size win
+# on the resulting .wasm.
+panic = "abort"
+# Gives LTO more to chew on. Slower release build, smaller binary.
+codegen-units = 1
