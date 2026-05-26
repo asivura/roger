@@ -77,8 +77,13 @@ zellij plugin -- file:$PWD/target/wasm32-wasip1/release/roger.wasm
 # Or persist via `load_plugins { "file:..." }` in ~/.config/zellij/config.kdl
 ```
 
-Detailed install instructions for the shim (PATH ordering, env
-setup) land in [#12](https://github.com/asivura/roger/issues/12).
+For the full install (including PATH-shadowing the shim) see
+[`docs/install.md`](docs/install.md). For the workflow once it's
+installed, see [`docs/usage.md`](docs/usage.md). The wire protocol
+between shim and plugin is documented in
+[`docs/rpc-protocol.md`](docs/rpc-protocol.md); the v0.1 trust model
+in [`docs/trust-model.md`](docs/trust-model.md).
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the verify-before-pushing
 recipe.
 
