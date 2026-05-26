@@ -114,15 +114,16 @@ stable across re-runs.
 
 ### Inspect plugin log
 
-Plugin-side `eprintln!` lines go to Zellij's plugin log. The
-location varies by Zellij version; on a typical Linux setup:
+Plugin-side `eprintln!` lines go to Zellij's runtime log. On Linux:
 
 ```bash
-ls -la ~/.cache/zellij/<session-name>/<plugin-something>/
+tail -f /tmp/zellij-$(id -u)/zellij-log/zellij.log
 ```
 
-…or check `zellij setup --check` for the canonical paths your
-install uses.
+On macOS / BSD the path differs — `zellij setup --check` shows the
+cache and config dirs for your install. The log captures plugin
+panics, permission denials, and our handlers' `eprintln!` lines
+(unknown subcommand warnings, watchdog expiries, etc).
 
 ## Troubleshooting
 
@@ -168,13 +169,39 @@ question, not a shim question.
 
 Look in the plugin log for the catch-all warning:
 
-```
+```text
 roger-shim: unknown tmux subcommand "<X>"; treating as no-op
 ```
 
 If `<X>` is something Claude Code added in a recent version and it
 needs real semantics rather than no-op, file an issue. The
 existing handler shape in `shim/src/commands/` is small to extend.
+
+### New teammate pane briefly shows a shell prompt
+
+Expected. Real tmux's `new-session` / `new-window` / `split-window`
+all create *empty* panes (running `$SHELL`); the follow-up
+`send-keys` is what launches the teammate. roger-shim matches that
+behavior — see [`shim.md`](shim.md#v01-limitations) for the
+detailed rationale. The shell-prompt flash typically lasts
+~50-200ms before `claude` exec's. If it's persisting longer, the
+follow-up `send-keys` failed; check the plugin log for
+`team.send` errors.
+
+### Verifying Claude Code actually routes through TmuxBackend
+
+The shim only fires when Claude shells out to `tmux <subcommand>`.
+On platforms or Claude versions where Claude uses iTerm2, the
+in-process backend, or a different mechanism, the shim is
+bypassed entirely.
+
+Quick check: with the shim activated, run a teammate-spawning
+prompt in Claude and watch for `eprintln!` output from the shim
+in Claude's host terminal (every `tmux` shell-out the shim sees
+emits at least the "ZELLIJ_SESSION_NAME unset" path or its
+no-op-warning path). If you see nothing, Claude isn't invoking
+`tmux` for teammate ops; consult Claude Code's own settings for
+forcing TmuxBackend.
 
 ## What's not covered yet (v0.1 limitations)
 
