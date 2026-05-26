@@ -119,19 +119,28 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the previous `Known limitations` section.
   ([#57](https://github.com/asivura/roger/pull/57))
 - `docs/install.md` — full operator install guide. Covers
-  prerequisites, building the plugin + shim, placing artifacts,
-  Zellij `config.kdl` autoload, PATH-shadow setup for the shim,
-  per-session activation patterns (inline `PATH=` or shell
-  function), verification (`which tmux`), an optional rebuild
-  script, uninstall, and a troubleshooting section keyed to the
-  most common setup failure modes.
+  prerequisites (with `rustup --version` / `zellij --version` /
+  Claude TmuxBackend verification commands), building the plugin
+  + shim, placing artifacts, Zellij `config.kdl` autoload
+  (including how to create it if missing), PATH-shadow setup for
+  the shim, per-session activation patterns (inline `PATH=` or
+  shell function), two-step verification (`which tmux` AND a
+  `team.list` smoke test via `zellij pipe`), an optional rebuild
+  script (with `ROGER_DIR` override), symmetric uninstall
+  (artifacts + permission cache + shell function), and a
+  troubleshooting section keyed to the most common setup failure
+  modes (PATH ordering, plugin load failure, hung `zellij pipe`,
+  ABI mismatch on Zellij version skew).
 - `docs/usage.md` — operator workflow doc. Covers the basic
   spawn-watch-cleanup flow, lifecycle semantics, how to inspect
   the plugin's state with `zellij pipe`, resuming teammate
   sessions from non-Zellij shells, re-running exited commands,
-  reading plugin logs, and a separate troubleshooting section for
-  runtime issues (garbled keys, stuck spawns hitting the
-  watchdog, unrecognized subcommands).
+  reading plugin logs from the deterministic
+  `/tmp/zellij-$(id -u)/zellij-log/zellij.log` location, and a
+  separate troubleshooting section (garbled keys, stuck spawns
+  hitting the watchdog, unrecognized subcommands, the brief
+  $SHELL prompt before `claude` exec's, verifying Claude actually
+  routes through TmuxBackend).
 - `README.md` now links the install + usage + protocol + trust
   docs from the Building section so newcomers have a path.
   Closes #12.
