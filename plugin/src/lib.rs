@@ -55,6 +55,23 @@ use roger_proto::{
 /// `update()` (where we get the resulting pane id and reply).
 const SPAWN_TOKEN_KEY: &str = "roger.spawn_token";
 
+/// How long a `team.spawn` can wait for `CommandPaneOpened` before the
+/// watchdog gives up on it. Zellij does **not** emit
+/// `CommandPaneOpened` when `spawn_terminal` returns
+/// `Err(CommandNotFound)` (verified by the correctness reviewer on
+/// PR #44 against `zellij-server/src/pty.rs`), so without a watchdog
+/// the corresponding `PendingSpawn` leaks forever and the shim hangs
+/// until its own client-side timeout. 10s is the same default the
+/// shim uses for its read timeout.
+const SPAWN_WATCHDOG_TTL_SECS: f64 = 10.0;
+
+/// How often to wake up and sweep expired `pending_spawns` entries.
+/// Slightly shorter than the TTL so an expired entry is found within
+/// one tick after timeout. Trade-off: shorter = tighter timeout
+/// reporting; longer = fewer wakeups. 5s gives ≤15s worst-case wait
+/// before SPAWN_FAILED reaches the caller.
+const SPAWN_WATCHDOG_TICK_SECS: f64 = 5.0;
+
 #[derive(Default)]
 struct State {
     /// Currently-tracked teammate panes, keyed by Zellij *terminal*
@@ -88,6 +105,17 @@ struct State {
     /// Monotonic counter for spawn correlation tokens. Wraps at
     /// `u64::MAX` which is fine — the universe ends before we hit it.
     next_spawn_token: u64,
+    /// Cumulative seconds elapsed across all `Event::Timer` ticks the
+    /// plugin has seen. The Wasm sandbox doesn't expose a
+    /// monotonic clock (`std::time::Instant::now()` is unreliable on
+    /// `wasm32-wasip1`), so we accumulate `Event::Timer(elapsed)`
+    /// payloads as a proxy. Used to age `pending_spawns` against
+    /// `SPAWN_WATCHDOG_TTL_SECS`.
+    watchdog_elapsed_secs: f64,
+    /// `true` while a `set_timeout` is outstanding. Prevents stacking
+    /// duplicate timers when multiple spawns are concurrently
+    /// pending — one tick is enough to sweep all of them.
+    watchdog_armed: bool,
 }
 
 /// Context the plugin remembers while a `team.spawn` is in flight,
@@ -98,6 +126,11 @@ struct PendingSpawn {
     agent_id: String,
     name: String,
     command: String,
+    /// Value of `State::watchdog_elapsed_secs` at the moment this
+    /// `PendingSpawn` was inserted. The watchdog expires the entry
+    /// when `state.watchdog_elapsed_secs - created_at_secs >=
+    /// SPAWN_WATCHDOG_TTL_SECS`.
+    created_at_secs: f64,
 }
 
 /// What `handle_pipe` returns to `pipe()`.
@@ -131,6 +164,11 @@ impl ZellijPlugin for State {
             EventType::CommandPaneExited,
             EventType::CommandPaneReRun,
             EventType::PaneClosed,
+            // The spawn watchdog rearms `set_timeout` after each tick
+            // while `pending_spawns` is non-empty; receiving the
+            // resulting `Event::Timer` payload requires the
+            // subscription.
+            EventType::Timer,
         ]);
 
         hide_self();
@@ -149,6 +187,9 @@ impl ZellijPlugin for State {
             }
             Event::CommandPaneReRun(pane_id, _ctx) => {
                 self.on_command_pane_rerun(pane_id);
+            }
+            Event::Timer(elapsed_secs) => {
+                self.on_watchdog_tick(elapsed_secs);
             }
             _ => {}
         }
@@ -313,8 +354,10 @@ impl State {
                 agent_id: params.agent_id,
                 name: params.name,
                 command: command_display,
+                created_at_secs: self.watchdog_elapsed_secs,
             },
         );
+        self.arm_watchdog();
 
         let mut ctx = BTreeMap::new();
         ctx.insert(SPAWN_TOKEN_KEY.to_string(), token.to_string());
@@ -326,6 +369,12 @@ impl State {
         // silently no-op on the host side — verified safe in
         // zellij-tile 0.43.1, no panic, no abort (error-handling
         // reviewer, PR #44).
+        //
+        // If Zellij never emits `CommandPaneOpened` (e.g. the binary
+        // at `argv[0]` doesn't exist; verified against
+        // `zellij-server/src/pty.rs`'s `spawn_terminal` path), the
+        // watchdog armed above will sweep this `PendingSpawn` after
+        // `SPAWN_WATCHDOG_TTL_SECS` and reply `SPAWN_FAILED`.
         DispatchOutcome::Deferred
     }
 
@@ -544,6 +593,65 @@ impl State {
         let value =
             serde_json::to_value(OkResult { ok: true }).expect("OkResult serializes infallibly");
         Response::ok(&request.id, value)
+    }
+
+    /// Schedule the next watchdog `Event::Timer` if one isn't already
+    /// in flight. Cheap to call repeatedly: the `watchdog_armed` flag
+    /// guards against stacking duplicate timers when multiple spawns
+    /// pile up. The flag is cleared in `on_watchdog_tick` so the next
+    /// arm-request gets honored. (#45.)
+    fn arm_watchdog(&mut self) {
+        if self.watchdog_armed {
+            return;
+        }
+        set_timeout(SPAWN_WATCHDOG_TICK_SECS);
+        self.watchdog_armed = true;
+    }
+
+    /// Sweep `pending_spawns` for entries that have been waiting
+    /// longer than `SPAWN_WATCHDOG_TTL_SECS`. For each, send back a
+    /// `SPAWN_FAILED` reply and remove the entry. Rearm the watchdog
+    /// if any spawns remain pending so the next sweep happens
+    /// `SPAWN_WATCHDOG_TICK_SECS` from now. (#45.)
+    fn on_watchdog_tick(&mut self, elapsed_secs: f64) {
+        self.watchdog_armed = false;
+        self.watchdog_elapsed_secs += elapsed_secs;
+
+        let now = self.watchdog_elapsed_secs;
+        let expired: Vec<u64> = self
+            .pending_spawns
+            .iter()
+            .filter(|(_, p)| now - p.created_at_secs >= SPAWN_WATCHDOG_TTL_SECS)
+            .map(|(t, _)| *t)
+            .collect();
+
+        for token in expired {
+            // `remove(&token)` returns `Some` here — we just collected
+            // these tokens from the same map and we have `&mut self`.
+            let pending = self
+                .pending_spawns
+                .remove(&token)
+                .expect("expired token was in pending_spawns this iteration");
+            reply(
+                &pending.pipe_id,
+                &Response::err(
+                    &pending.request_id,
+                    error_codes::SPAWN_FAILED,
+                    "team.spawn: timed out waiting for CommandPaneOpened",
+                ),
+            );
+            eprintln!(
+                "[roger] spawn watchdog: expired pending_spawn token={} agent_id={:?} (no CommandPaneOpened within {}s)",
+                token, pending.agent_id, SPAWN_WATCHDOG_TTL_SECS
+            );
+        }
+
+        // Keep ticking while spawns remain pending. If they all
+        // resolved (or were just expired), let the watchdog sleep
+        // until the next `handle_team_spawn` rearms it.
+        if !self.pending_spawns.is_empty() {
+            self.arm_watchdog();
+        }
     }
 }
 

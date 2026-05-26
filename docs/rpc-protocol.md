@@ -170,17 +170,24 @@ subsequent `team.send` / `team.kill` calls to it.
 deferred to the Zellij `CommandPaneOpened` event (the pane id arrives
 asynchronously via that callback). From the shim's perspective the
 RPC is still synchronous — its `zellij pipe` call blocks until the
-plugin sends the reply. The shim's read timeout is the only thing
-that bounds the wait if the spawn never completes; the plugin has
-no internal timeout in v0.1 (tracked as a follow-up).
+plugin sends the reply.
+
+**Watchdog (post-#57):** the plugin enforces an internal 10-second
+TTL on every in-flight `team.spawn`. If `CommandPaneOpened` doesn't
+arrive within that window, the plugin replies `SPAWN_FAILED` with
+message `"team.spawn: timed out waiting for CommandPaneOpened"` and
+discards the pending entry. The TTL is configured via
+`SPAWN_WATCHDOG_TTL_SECS` in `plugin/src/lib.rs`. The shim's
+client-side read timeout still applies as the outer bound, but for
+the common failure modes (missing binary, etc.) the plugin's
+watchdog is what surfaces the error.
 
 **Behavior when `argv[0]` is missing:** verified against
 `zellij-server/src/pty.rs` — Zellij does **not** emit
 `CommandPaneOpened` when `spawn_terminal` returns
-`Err(CommandNotFound)`. So a `team.spawn` for a non-existent binary
-will hang on the shim side until its read timeout fires; the
-`PendingSpawn` entry leaks in the plugin's memory. The watchdog
-follow-up addresses both.
+`Err(CommandNotFound)`. The watchdog described above catches this
+case: `SPAWN_FAILED` is returned after ~10s instead of the request
+hanging until the shim's client-side timeout fires.
 
 ### `team.send`
 
