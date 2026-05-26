@@ -141,6 +141,38 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `--teammate-mode tmux` is Phase D (#11). Closes #9, closes #10.
   ([#58](https://github.com/asivura/roger/pull/58))
 
+### Fixed
+
+- **Plugin now actually loads in Zellij 0.44+.** Discovered
+  empirically while installing on the lab box (Zellij 0.44.3,
+  aarch64) — the plugin produced
+  `failed to load plugin from instance / could not find exported
+  function`. Two compounding causes:
+  - The transitive `zellij-utils` protobuf wire types changed
+    between 0.43 and 0.44; a 0.43-built plugin can't decode events
+    from a 0.44 host. The `zellij-tile` public API (the
+    `register_plugin!` macro, `ZellijPlugin` trait, shim
+    functions) is byte-identical between versions — only the
+    protobuf payloads moved. Bumped the dep to `"0.44"`. No
+    source change required.
+  - Zellij's plugin host calls `_start` to initialize the wasm
+    instance. The wasi-sdk crt only wraps `fn main()` into a
+    `_start` export for binary crates on `wasm32-wasip1`; the
+    previous `[lib] crate-type = ["cdylib"]` produced no `_start`.
+    Switched the plugin to a binary target: renamed
+    `plugin/src/lib.rs` → `plugin/src/main.rs`, replaced `[lib]`
+    with `[[bin]] name = "roger" path = "src/main.rs"`, and
+    updated the `--lib` → `--bin roger` flag in
+    `.cargo/config.toml` and `.github/workflows/ci.yml`.
+
+  Verified by `wasm-tools print` comparing pre/post exports against
+  a known-working built-in Zellij plugin — post-fix matches
+  exactly (`_start`, `__main_void`, `load`, `update`, `pipe`,
+  `render`, `plugin_version`, `memory`). Side-benefit: the panic
+  hook installed by `register_plugin!`'s `fn main()` actually runs
+  now (it was dead code under the `[lib]` shape).
+  ([#60](https://github.com/asivura/roger/pull/60))
+
 ### Changed
 
 - Extracted `parse_params<T>` helper for the params-deserialization

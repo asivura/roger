@@ -177,7 +177,7 @@ TTL on every in-flight `team.spawn`. If `CommandPaneOpened` doesn't
 arrive within that window, the plugin replies `SPAWN_FAILED` with
 message `"team.spawn: timed out waiting for CommandPaneOpened"` and
 discards the pending entry. The TTL is configured via
-`SPAWN_WATCHDOG_TTL_SECS` in `plugin/src/lib.rs`. The shim's
+`SPAWN_WATCHDOG_TTL_SECS` in `plugin/src/main.rs`. The shim's
 client-side read timeout still applies as the outer bound, but for
 the common failure modes (missing binary, etc.) the plugin's
 watchdog is what surfaces the error.

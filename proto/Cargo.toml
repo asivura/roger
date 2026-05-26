@@ -12,6 +12,6 @@ homepage.workspace = true
 # This crate intentionally has NO zellij-tile dependency so it can
 # compile and run unit tests on the host target. The plugin depends
 # on roger-proto (this crate) for the wire types; zellij-tile only
-# enters at the plugin's lib.rs.
+# enters at the plugin's main.rs.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
