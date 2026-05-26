@@ -86,20 +86,26 @@ pub struct ErrorPayload {
 /// still running or when Zellij reports no exit code, `Some(code)`
 /// after `CommandPaneExited`. Omitted from the wire format when
 /// `None` so existing `team.list` consumers are unaffected.
-#[derive(Debug, Clone, Serialize)]
+///
+/// **Invariant:** `exit_code` is `Some(_)` only when `exited == true`
+/// — the handler flips both fields together (`on_command_pane_exited`
+/// sets both; `on_command_pane_rerun` clears both). The wire format
+/// permits the desynced shape, but consumers can rely on the
+/// invariant for any teammate the plugin emits.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TeammatePaneInfo {
     pub agent_id: String,
     pub pane_id: u32,
     pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub command: Option<String>,
     pub exited: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub exit_code: Option<i32>,
 }
 
 /// Result type for the `team.list` method.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct TeamListResult {
     pub panes: Vec<TeammatePaneInfo>,
 }
@@ -127,7 +133,7 @@ pub struct SpawnParams {
 /// Result type for the `team.spawn` method. The `pane_id` is the
 /// Zellij pane the plugin opened for the teammate, returned so the
 /// shim can address subsequent `team.send` / `team.kill` calls to it.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct SpawnResult {
     pub pane_id: u32,
 }
@@ -163,7 +169,7 @@ pub struct KillParams {
 /// Result type for `team.send` and `team.kill`. Both are
 /// fire-and-forget on the Zellij side; success means the plugin
 /// accepted the request and dispatched the underlying call.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct OkResult {
     pub ok: bool,
 }
@@ -486,5 +492,80 @@ mod tests {
         };
         let s = serde_json::to_string(&t).unwrap();
         assert!(s.contains(r#""exit_code":-1"#), "got: {}", s);
+    }
+
+    #[test]
+    fn teammate_pane_info_round_trips() {
+        // The wire-compat reviewer on PR #54 flagged that prior tests
+        // were serialize-only substring asserts. With `Deserialize`
+        // now derived on `TeammatePaneInfo`, verify the full
+        // round-trip preserves every field — both the "live"
+        // (exited=false, exit_code=None) and "exited" (exited=true,
+        // exit_code=Some(N)) shapes.
+        for original in [
+            TeammatePaneInfo {
+                agent_id: "researcher@team".into(),
+                pane_id: 42,
+                name: "researcher".into(),
+                command: Some("claude --agent-id researcher@team".into()),
+                exited: false,
+                exit_code: None,
+            },
+            TeammatePaneInfo {
+                agent_id: "linter@team".into(),
+                pane_id: 99,
+                name: "linter".into(),
+                command: None,
+                exited: true,
+                exit_code: Some(137),
+            },
+        ] {
+            let s = serde_json::to_string(&original).unwrap();
+            let parsed: TeammatePaneInfo = serde_json::from_str(&s).expect("round-trip parse");
+            assert_eq!(original, parsed, "round-trip mismatch via: {}", s);
+        }
+    }
+
+    #[test]
+    fn team_list_result_round_trips_mixed_state() {
+        // `team.list` returns a `TeamListResult` whose `panes` may
+        // mix live and exited teammates. Verify the full result type
+        // round-trips — closing the wire-compat reviewer's coverage
+        // gap on the result wrapper, not just the inner element type.
+        let original = TeamListResult {
+            panes: vec![
+                TeammatePaneInfo {
+                    agent_id: "researcher@team".into(),
+                    pane_id: 1,
+                    name: "researcher".into(),
+                    command: Some("claude ...".into()),
+                    exited: false,
+                    exit_code: None,
+                },
+                TeammatePaneInfo {
+                    agent_id: "linter@team".into(),
+                    pane_id: 2,
+                    name: "linter".into(),
+                    command: None,
+                    exited: true,
+                    exit_code: Some(0),
+                },
+                TeammatePaneInfo {
+                    agent_id: "killed@team".into(),
+                    pane_id: 3,
+                    name: "killed".into(),
+                    command: Some("claude ...".into()),
+                    exited: true,
+                    exit_code: Some(-1),
+                },
+            ],
+        };
+        let s = serde_json::to_string(&original).unwrap();
+        let parsed: TeamListResult = serde_json::from_str(&s).expect("TeamListResult round-trip");
+        assert_eq!(
+            original, parsed,
+            "TeamListResult round-trip mismatch via: {}",
+            s
+        );
     }
 }

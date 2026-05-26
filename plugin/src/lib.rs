@@ -70,8 +70,13 @@ struct State {
     /// this to be safe in the face of Zellij pane-id reuse: if a
     /// terminal pane closes and Zellij later assigns the same numeric
     /// id to a non-Roger pane, that pane won't be in `teammates`, so
-    /// the membership check rejects the operation. Don't add insertion
-    /// sites elsewhere without revisiting the security review on #50.
+    /// the membership check rejects the operation. The lifecycle
+    /// update paths (`on_command_pane_exited`, `on_pane_closed`,
+    /// `on_command_pane_rerun`) likewise rely on this — they only
+    /// mutate entries that exist, so a spoofed event for a pane id
+    /// the plugin never inserted is a no-op. Don't add insertion
+    /// sites elsewhere without revisiting the security review on
+    /// PR #50.
     teammates: HashMap<u32, TeammatePaneInfo>,
     /// In-flight `team.spawn` calls awaiting `CommandPaneOpened`,
     /// keyed by a plugin-internal correlation token (see
@@ -403,7 +408,14 @@ impl State {
         match self.teammates.get_mut(&pane_id) {
             Some(t) => {
                 t.exited = true;
-                t.exit_code = exit_code;
+                // Don't clobber a previously-recorded exit code if
+                // Zellij re-emits the event with `None` (defensive;
+                // correctness reviewer on PR #54).
+                t.exit_code = exit_code.or(t.exit_code);
+                debug_assert!(
+                    t.exited || t.exit_code.is_none(),
+                    "TeammatePaneInfo invariant: exit_code is Some only when exited"
+                );
             }
             None => {
                 eprintln!(
@@ -426,13 +438,13 @@ impl State {
     fn on_pane_closed(&mut self, pane_id: PaneId) {
         match pane_id {
             PaneId::Terminal(id) => {
-                let removed = self.teammates.remove(&id).is_some();
-                if !removed {
-                    eprintln!(
-                        "[roger] PaneClosed pane_id=Terminal({}) (not tracked; ignored)",
-                        id
-                    );
-                }
+                // Silent. The not-tracked case is the *happy path* for
+                // a `team.kill` round-trip (PR #50's optimistic-remove
+                // already cleared the entry, so the eventual
+                // `PaneClosed` finds nothing to do). Logging here
+                // would emit a "not tracked" line on every successful
+                // kill — pure noise. (correctness reviewer, PR #54.)
+                let _ = self.teammates.remove(&id);
             }
             PaneId::Plugin(id) => {
                 eprintln!(
@@ -454,6 +466,10 @@ impl State {
             Some(t) => {
                 t.exited = false;
                 t.exit_code = None;
+                debug_assert!(
+                    t.exited || t.exit_code.is_none(),
+                    "TeammatePaneInfo invariant: exit_code is Some only when exited"
+                );
             }
             None => {
                 eprintln!(
