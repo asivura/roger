@@ -123,6 +123,30 @@ pub struct SpawnResult {
     pub pane_id: u32,
 }
 
+/// Params for the `team.send` method. Writes `text` into the
+/// teammate's PTY (the inner half of TmuxBackend's `send-keys`
+/// semantics).
+#[derive(Debug, Clone, Deserialize)]
+pub struct SendParams {
+    pub pane_id: u32,
+    pub text: String,
+}
+
+/// Params for the `team.kill` method. Closes the teammate's pane
+/// and removes it from `State::teammates`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KillParams {
+    pub pane_id: u32,
+}
+
+/// Result type for `team.send` and `team.kill`. Both are
+/// fire-and-forget on the Zellij side; success means the plugin
+/// accepted the request and dispatched the underlying call.
+#[derive(Debug, Serialize)]
+pub struct OkResult {
+    pub ok: bool,
+}
+
 /// JSON-RPC-style error codes. The numeric values mirror the
 /// [JSON-RPC 2.0 reserved range](https://www.jsonrpc.org/specification#error_object)
 /// so any future generic JSON-RPC client knows how to interpret them
@@ -308,6 +332,42 @@ mod tests {
         let r = Response::err("abc", error_codes::SPAWN_FAILED, "empty argv");
         let s = serde_json::to_string(&r).unwrap();
         assert!(s.contains(r#""code":-32001"#), "got: {}", s);
+    }
+
+    // --- team.send / team.kill ----------------------------------
+
+    #[test]
+    fn send_params_parses_happy_path() {
+        let p: SendParams = serde_json::from_str(r#"{"pane_id":17,"text":"hello\n"}"#).unwrap();
+        assert_eq!(p.pane_id, 17);
+        assert_eq!(p.text, "hello\n");
+    }
+
+    #[test]
+    fn send_params_rejects_missing_fields() {
+        let r: Result<SendParams, _> = serde_json::from_str(r#"{"pane_id":17}"#);
+        assert!(r.is_err(), "missing text should be rejected");
+        let r: Result<SendParams, _> = serde_json::from_str(r#"{"text":"x"}"#);
+        assert!(r.is_err(), "missing pane_id should be rejected");
+    }
+
+    #[test]
+    fn kill_params_parses_happy_path() {
+        let p: KillParams = serde_json::from_str(r#"{"pane_id":17}"#).unwrap();
+        assert_eq!(p.pane_id, 17);
+    }
+
+    #[test]
+    fn kill_params_rejects_missing_pane_id() {
+        let r: Result<KillParams, _> = serde_json::from_str(r#"{}"#);
+        assert!(r.is_err(), "missing pane_id should be rejected");
+    }
+
+    #[test]
+    fn ok_result_serializes_as_object_with_ok_field() {
+        let r = OkResult { ok: true };
+        let s = serde_json::to_string(&r).unwrap();
+        assert_eq!(s, r#"{"ok":true}"#);
     }
 
     // --- existing tests below -----------------------------------

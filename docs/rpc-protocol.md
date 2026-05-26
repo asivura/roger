@@ -158,17 +158,35 @@ will hang on the shim side until its read timeout fires; the
 `PendingSpawn` entry leaks in the plugin's memory. The watchdog
 follow-up addresses both.
 
-### `team.send` *(planned, #7)*
+### `team.send`
 
-Writes text into a teammate pane's PTY (the `send-keys` equivalent).
+Writes `text` into the PTY of a tracked teammate pane (the inner
+half of TmuxBackend's `send-keys` semantics). Synchronous on the
+RPC; the underlying `write_chars_to_pane_id` is fire-and-forget on
+the Zellij side.
 
-**Params:** `{ pane_id, text }`. **Result:** `{ ok: true }`.
+**Params:** `{ pane_id: u32, text: string }`. Both required.
 
-### `team.kill` *(planned, #7)*
+**Result:** `{ ok: true }`.
 
-Closes a teammate pane and removes it from the state map.
+**Errors:**
+- `INVALID_PARAMS` (-32602) — params don't match expected shape, OR
+  `pane_id` isn't in `State::teammates` (unknown / dead pane).
 
-**Params:** `{ pane_id }`. **Result:** `{ ok: true }`.
+### `team.kill`
+
+Closes a tracked teammate pane and removes it from `State::teammates`
+optimistically (without waiting for the `PaneClosed` event). The
+shim explicitly asked for the kill; the eventual `PaneClosed` will
+find no matching entry and harmlessly no-op.
+
+**Params:** `{ pane_id: u32 }`. Required.
+
+**Result:** `{ ok: true }`.
+
+**Errors:**
+- `INVALID_PARAMS` (-32602) — params don't match, OR `pane_id` isn't
+  in `State::teammates`.
 
 ## Error codes
 

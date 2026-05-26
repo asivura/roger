@@ -75,6 +75,14 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   New types `SpawnParams` and `SpawnResult` in `roger-proto`,
   plus the `SPAWN_FAILED` error code (-32001).
   ([#44](https://github.com/asivura/roger/pull/44))
+- `team.send` and `team.kill` RPC methods: write text into a
+  tracked teammate pane (`write_chars_to_pane_id`), and close a
+  tracked teammate pane (`close_pane_with_id`). Both are
+  synchronous on the RPC (the underlying Zellij calls are
+  fire-and-forget). `team.kill` removes the entry from
+  `State::teammates` optimistically. New types `SendParams`,
+  `KillParams`, and `OkResult` in `roger-proto`. 5 additional unit
+  tests (total 22/22 pass). (this PR)
 
 ### Changed
 

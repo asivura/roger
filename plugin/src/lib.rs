@@ -9,12 +9,12 @@
 //!
 //! Implemented methods:
 //!   - `team.list` (PR #35)
-//!   - `team.spawn` (this PR — #6)
+//!   - `team.spawn` (PR #44)
+//!   - `team.send` + `team.kill` (this PR — #7)
 //!
 //! Planned:
-//!   - `team.send` + `team.kill` (#7)
-//!   - lifecycle wiring (#8) — `CommandPaneExited` removes from state,
-//!     `PaneClosed` cleans up
+//!   - lifecycle wiring (#8) — `CommandPaneExited` marks teammate
+//!     `exited: true`, `PaneClosed` removes from `State::teammates`
 //!
 //! ## team.spawn: deferred-reply pattern
 //!
@@ -44,7 +44,8 @@ use std::path::PathBuf;
 use zellij_tile::prelude::*;
 
 use roger_proto::{
-    error_codes, Request, Response, SpawnParams, SpawnResult, TeamListResult, TeammatePaneInfo,
+    error_codes, KillParams, OkResult, Request, Response, SendParams, SpawnParams, SpawnResult,
+    TeamListResult, TeammatePaneInfo,
 };
 
 /// Key used in `CommandToRun`'s `Context` map to carry the per-spawn
@@ -223,6 +224,8 @@ impl State {
         match request.method.as_str() {
             "team.list" => DispatchOutcome::Reply(self.handle_team_list(request)),
             "team.spawn" => self.handle_team_spawn(pipe_id, request),
+            "team.send" => DispatchOutcome::Reply(self.handle_team_send(request)),
+            "team.kill" => DispatchOutcome::Reply(self.handle_team_kill(request)),
             other => DispatchOutcome::Reply(Response::err(
                 &request.id,
                 error_codes::METHOD_NOT_FOUND,
@@ -372,6 +375,79 @@ impl State {
             }
         };
         reply(&pending.pipe_id, &Response::ok(&pending.request_id, result));
+    }
+
+    /// `team.send` — write text into a tracked teammate pane's PTY.
+    /// Synchronous: `write_chars_to_pane_id` is fire-and-forget on
+    /// the Zellij side; the RPC replies as soon as we dispatch it.
+    fn handle_team_send(&self, request: &Request) -> Response {
+        let params: SendParams = match serde_json::from_value(request.params.clone()) {
+            Ok(p) => p,
+            Err(e) => {
+                return Response::err(
+                    &request.id,
+                    error_codes::INVALID_PARAMS,
+                    format!("invalid team.send params: {}", e),
+                );
+            }
+        };
+
+        if !self.teammates.contains_key(&params.pane_id) {
+            return Response::err(
+                &request.id,
+                error_codes::INVALID_PARAMS,
+                format!("unknown pane_id: {}", params.pane_id),
+            );
+        }
+
+        write_chars_to_pane_id(&params.text, PaneId::Terminal(params.pane_id));
+
+        match serde_json::to_value(OkResult { ok: true }) {
+            Ok(v) => Response::ok(&request.id, v),
+            Err(e) => Response::err(
+                &request.id,
+                error_codes::INTERNAL_ERROR,
+                format!("serialize team.send result: {}", e),
+            ),
+        }
+    }
+
+    /// `team.kill` — close a tracked teammate pane and remove it
+    /// from `State::teammates`. Optimistic removal: we drop the
+    /// entry immediately rather than waiting for `PaneClosed`, since
+    /// the shim explicitly asked for the kill and the call is
+    /// fire-and-forget. The eventual `PaneClosed` event will find no
+    /// matching entry and harmlessly no-op (#8 wiring).
+    fn handle_team_kill(&mut self, request: &Request) -> Response {
+        let params: KillParams = match serde_json::from_value(request.params.clone()) {
+            Ok(p) => p,
+            Err(e) => {
+                return Response::err(
+                    &request.id,
+                    error_codes::INVALID_PARAMS,
+                    format!("invalid team.kill params: {}", e),
+                );
+            }
+        };
+
+        if self.teammates.remove(&params.pane_id).is_none() {
+            return Response::err(
+                &request.id,
+                error_codes::INVALID_PARAMS,
+                format!("unknown pane_id: {}", params.pane_id),
+            );
+        }
+
+        close_pane_with_id(PaneId::Terminal(params.pane_id));
+
+        match serde_json::to_value(OkResult { ok: true }) {
+            Ok(v) => Response::ok(&request.id, v),
+            Err(e) => Response::err(
+                &request.id,
+                error_codes::INTERNAL_ERROR,
+                format!("serialize team.kill result: {}", e),
+            ),
+        }
     }
 }
 
