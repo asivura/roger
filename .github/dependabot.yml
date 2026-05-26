@@ -1,0 +1,28 @@
+# Dependabot config: keep SHA-pinned actions and cargo deps current.
+# See .github/workflows/ci.yml for the SHA-pinned third-party actions.
+#
+# Commit-message prefixes are chosen so Dependabot's PRs pass the
+# Conventional Commits gate enforced in CI (commit-lint job):
+#   - github-actions  -> `ci(deps): ...`     (workflow config touches CI)
+#   - cargo           -> `build(deps): ...`  (Cargo deps are build-system)
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope
+    labels:
+      - "area: ci"
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
+    labels:
+      - "area: plugin"

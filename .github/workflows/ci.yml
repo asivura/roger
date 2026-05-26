@@ -16,18 +16,19 @@ permissions:
 jobs:
   build:
     name: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable @ 2026-03-27
         with:
           components: rustfmt, clippy
           targets: wasm32-wasip1
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2 @ 2026-03-12
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -39,6 +40,7 @@ jobs:
         run: cargo build --release --target wasm32-wasip1
 
       - name: Upload Wasm artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: roger-wasm-${{ github.sha }}
@@ -48,7 +50,8 @@ jobs:
 
   commit-lint:
     name: commit lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +59,6 @@ jobs:
           fetch-depth: 0
 
       - name: Lint PR commits
-        uses: wagoid/commitlint-github-action@v6
+        uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1 @ 2025-01-14
         with:
           configFile: .commitlintrc.yml
