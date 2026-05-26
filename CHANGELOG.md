@@ -64,6 +64,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `cargo test-proto` and `cargo check-proto` aliases in
   `.cargo/config.toml`.
   ([#40](https://github.com/asivura/roger/pull/40))
+- `team.spawn` RPC method: spawns a teammate as a new Zellij pane via
+  `open_command_pane` and tracks it in plugin state. The shim
+  receives the new pane id in the response for subsequent
+  `team.send` / `team.kill` calls (Phase B #7). Implementation uses a
+  deferred-reply pattern (correlation token in `CommandToRun`'s
+  context map) because zellij-tile 0.43.1's `open_command_pane` is
+  fire-and-forget — the pane id arrives via the `CommandPaneOpened`
+  event. From the shim's perspective the RPC remains synchronous.
+  New types `SpawnParams` and `SpawnResult` in `roger-proto`,
+  plus the `SPAWN_FAILED` error code (-32001).
+  ([#44](https://github.com/asivura/roger/pull/44))
 
 ### Changed
 
@@ -72,9 +83,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (it never checked all crates, only the plugin) and was getting
   worse as the workspace grew.
   ([#40](https://github.com/asivura/roger/pull/40))
-
-### Changed
-
+- `State::teammates` map key changed from `String` (agent id) to
+  `u32` (Zellij terminal pane id). Wire format unchanged; the
+  pane-id key makes `team.send` / `team.kill` lookups in #7 direct,
+  and `team.list`'s `Vec<TeammatePaneInfo>` serialization is
+  unaffected. ([#44](https://github.com/asivura/roger/pull/44))
 - Hardened CI: third-party actions SHA-pinned, runners pinned to
   `ubuntu-24.04`, `timeout-minutes` set on both jobs, Wasm artifact
   upload gated to `main` pushes only.
@@ -91,6 +104,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `footer-max-line-length` so contributors can paste logs or diffs
   into commit bodies. Subject is still capped at 72.
   ([#26](https://github.com/asivura/roger/pull/26))
+
+### Known limitations
+
+- `team.spawn` has no internal timeout: if Zellij fails to emit
+  `CommandPaneOpened` (currently the case when `argv[0]` doesn't
+  exist), the corresponding `PendingSpawn` state entry leaks and
+  the shim hangs until its own client-side read timeout. Tracked
+  as a follow-up watchdog issue.
+  ([#44](https://github.com/asivura/roger/pull/44))
 
 ### Fixed
 

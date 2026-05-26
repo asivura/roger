@@ -101,11 +101,62 @@ Returns the panes currently tracked by `roger`.
 The list is empty when no teammates have been spawned. That's a
 valid response, not an error.
 
-### `team.spawn` *(planned, #6)*
+### `team.spawn`
 
-Spawns a teammate as a new Zellij pane and tracks it.
+Spawns a teammate as a new Zellij pane and tracks it in
+`State::teammates`. Returns the new pane's id so the shim can address
+subsequent `team.send` / `team.kill` calls to it.
 
-**Params:** `{ name, cwd, argv, color? }`. **Result:** `{ pane_id }`.
+**Params:**
+
+```json
+{
+  "agent_id": "researcher@my-team",
+  "name": "researcher",
+  "cwd": "/home/ubuntu/some/dir",
+  "argv": ["claude", "--agent-id", "researcher@my-team", "--prompt", "..."],
+  "color": "blue"
+}
+```
+
+- `agent_id` (string, required) — the unique identifier the shim uses
+  to address the teammate from Claude Code's bookkeeping. Echoed
+  verbatim in `team.list`.
+- `name` (string, required) — human-readable label for the pane.
+- `cwd` (string, required) — working directory for the spawned process.
+- `argv` (array of strings, required) — the command + args to run.
+  Must be non-empty; `argv[0]` is the executable path.
+- `color` (string, optional) — pane border color hint. Recognized
+  values match Zellij's named colors. Defaults to no override.
+
+**Result:**
+
+```json
+{ "pane_id": 17 }
+```
+
+**Errors:**
+
+- `INVALID_PARAMS` (-32602) — params object doesn't match the
+  expected shape (missing or wrong-typed field).
+- `SPAWN_FAILED` (-32001) — `argv` was empty so there's no command
+  to run. Roger-specific code in the JSON-RPC 2.0 server-error range.
+
+**Async note:** internally the plugin's reply to `team.spawn` is
+deferred to the Zellij `CommandPaneOpened` event (the pane id arrives
+asynchronously via that callback). From the shim's perspective the
+RPC is still synchronous — its `zellij pipe` call blocks until the
+plugin sends the reply. The shim's read timeout is the only thing
+that bounds the wait if the spawn never completes; the plugin has
+no internal timeout in v0.1 (tracked as a follow-up).
+
+**Behavior when `argv[0]` is missing:** verified against
+`zellij-server/src/pty.rs` — Zellij does **not** emit
+`CommandPaneOpened` when `spawn_terminal` returns
+`Err(CommandNotFound)`. So a `team.spawn` for a non-existent binary
+will hang on the shim side until its read timeout fires; the
+`PendingSpawn` entry leaks in the plugin's memory. The watchdog
+follow-up addresses both.
 
 ### `team.send` *(planned, #7)*
 

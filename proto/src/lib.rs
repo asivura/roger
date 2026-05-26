@@ -95,6 +95,34 @@ pub struct TeamListResult {
     pub panes: Vec<TeammatePaneInfo>,
 }
 
+/// Params for the `team.spawn` method.
+///
+/// The shim builds this from Claude Code's `TmuxBackend` invocation:
+/// `argv` is the command + args that will start the teammate process
+/// (`["claude", "--agent-id", "researcher@my-team", ...]`); `cwd` is
+/// the working directory; `name` is the human-readable label that
+/// surfaces in the Zellij pane title; `color` (optional) hints the
+/// border style. `agent_id` is the unique identifier the shim uses
+/// to address the teammate from Claude Code's bookkeeping — the
+/// plugin echoes it back in `team.list`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SpawnParams {
+    pub agent_id: String,
+    pub name: String,
+    pub cwd: String,
+    pub argv: Vec<String>,
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+/// Result type for the `team.spawn` method. The `pane_id` is the
+/// Zellij pane the plugin opened for the teammate, returned so the
+/// shim can address subsequent `team.send` / `team.kill` calls to it.
+#[derive(Debug, Serialize)]
+pub struct SpawnResult {
+    pub pane_id: u32,
+}
+
 /// JSON-RPC-style error codes. The numeric values mirror the
 /// [JSON-RPC 2.0 reserved range](https://www.jsonrpc.org/specification#error_object)
 /// so any future generic JSON-RPC client knows how to interpret them
@@ -108,13 +136,12 @@ pub mod error_codes {
     pub const PARSE_ERROR: i32 = -32700;
     pub const INVALID_REQUEST: i32 = -32600;
     pub const METHOD_NOT_FOUND: i32 = -32601;
-    // Referenced from tests below (where it's "used") but not yet from
-    // the plugin's runtime code; clippy's dead-code lint runs on
-    // non-test builds only, hence the cfg gate. Removed once
-    // `team.spawn` (#6) emits this.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub const INVALID_PARAMS: i32 = -32602;
     pub const INTERNAL_ERROR: i32 = -32603;
+    /// Roger-specific: server-error range per JSON-RPC 2.0. Returned
+    /// when `team.spawn` fails to materialize a Zellij pane (e.g.
+    /// argv is empty so there's no command to run).
+    pub const SPAWN_FAILED: i32 = -32001;
 }
 
 #[cfg(test)]
@@ -217,6 +244,73 @@ mod tests {
         let s = serde_json::to_string(&r).unwrap();
         assert_eq!(s, r#"{"panes":[]}"#);
     }
+
+    // --- team.spawn types ----------------------------------------
+
+    #[test]
+    fn spawn_params_parses_happy_path() {
+        let p: SpawnParams = serde_json::from_str(
+            r#"{"agent_id":"researcher@my-team","name":"researcher","cwd":"/tmp",
+                "argv":["claude","--agent-id","researcher@my-team"],"color":"blue"}"#,
+        )
+        .unwrap();
+        assert_eq!(p.agent_id, "researcher@my-team");
+        assert_eq!(p.name, "researcher");
+        assert_eq!(p.cwd, "/tmp");
+        assert_eq!(p.argv, vec!["claude", "--agent-id", "researcher@my-team"]);
+        assert_eq!(p.color.as_deref(), Some("blue"));
+    }
+
+    #[test]
+    fn spawn_params_defaults_color_to_none() {
+        let p: SpawnParams =
+            serde_json::from_str(r#"{"agent_id":"a","name":"n","cwd":"/tmp","argv":["x"]}"#)
+                .unwrap();
+        assert!(p.color.is_none());
+    }
+
+    #[test]
+    fn spawn_params_rejects_missing_required_fields() {
+        // Missing agent_id
+        let r: Result<SpawnParams, _> =
+            serde_json::from_str(r#"{"name":"n","cwd":"/tmp","argv":["x"]}"#);
+        assert!(r.is_err(), "missing agent_id should be rejected");
+        // Missing argv
+        let r: Result<SpawnParams, _> =
+            serde_json::from_str(r#"{"agent_id":"a","name":"n","cwd":"/tmp"}"#);
+        assert!(r.is_err(), "missing argv should be rejected");
+    }
+
+    #[test]
+    fn spawn_result_serializes_pane_id() {
+        let r = SpawnResult { pane_id: 17 };
+        let s = serde_json::to_string(&r).unwrap();
+        assert_eq!(s, r#"{"pane_id":17}"#);
+    }
+
+    #[test]
+    fn spawn_failed_error_code() {
+        assert_eq!(error_codes::SPAWN_FAILED, -32001);
+    }
+
+    #[test]
+    fn response_err_with_invalid_params_serializes_correctly() {
+        // Exercises the INVALID_PARAMS code through Response::err,
+        // which previously had no test coverage.
+        let r = Response::err("abc", error_codes::INVALID_PARAMS, "missing argv");
+        let s = serde_json::to_string(&r).unwrap();
+        assert!(s.contains(r#""code":-32602"#), "got: {}", s);
+        assert!(s.contains(r#""message":"missing argv""#), "got: {}", s);
+    }
+
+    #[test]
+    fn response_err_with_spawn_failed_serializes_correctly() {
+        let r = Response::err("abc", error_codes::SPAWN_FAILED, "empty argv");
+        let s = serde_json::to_string(&r).unwrap();
+        assert!(s.contains(r#""code":-32001"#), "got: {}", s);
+    }
+
+    // --- existing tests below -----------------------------------
 
     #[test]
     fn teammate_pane_info_omits_command_when_none() {
