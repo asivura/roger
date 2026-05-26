@@ -11,7 +11,7 @@
 use std::io::{self, Write};
 use std::process::{Command, Stdio};
 
-use roger_proto::{error_codes, Request, Response};
+use roger_proto::{error_codes, Request, Response, UNKNOWN_PANE_ID_MSG};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -153,6 +153,6 @@ pub fn is_unknown_pane_id(err: &RpcError) -> bool {
     matches!(
         err,
         RpcError::Rpc { code, message }
-            if *code == error_codes::INVALID_PARAMS && message == "unknown pane_id"
+            if *code == error_codes::INVALID_PARAMS && message == UNKNOWN_PANE_ID_MSG
     )
 }

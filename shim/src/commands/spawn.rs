@@ -34,12 +34,23 @@ pub fn run(_subcommand: &str, args: &[String]) -> ExitCode {
     // The plugin needs `argv` non-empty; the shell is our placeholder.
     let argv: Vec<String> = vec![shell];
 
-    let agent_id = parsed
+    // agent_id derivation: prefer `<window>@<session>` when both are
+    // present (matches the canonical format the RPC docs use). Fall
+    // back to whichever single piece is available, finally to
+    // `"teammate"`. Correctness reviewer (PR #58) flagged that the
+    // prior version dropped the session entirely.
+    let agent_id = match (parsed.name.as_deref(), parsed.session.as_deref()) {
+        (Some(name), Some(session)) => format!("{}@{}", name, session),
+        (Some(name), None) => name.to_string(),
+        (None, Some(session)) => session.to_string(),
+        (None, None) => "teammate".to_string(),
+    };
+    let display_name = parsed
         .name
-        .clone()
-        .or(parsed.session.clone())
-        .unwrap_or_else(|| "teammate".to_string());
-    let display_name = parsed.name.unwrap_or_else(|| "teammate".to_string());
+        .as_deref()
+        .or(parsed.session.as_deref())
+        .unwrap_or("teammate")
+        .to_string();
 
     let result: Result<SpawnResult, _> = rpc::call(
         "team.spawn",

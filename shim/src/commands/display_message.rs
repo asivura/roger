@@ -22,9 +22,25 @@ pub fn run(_args: &[String]) -> ExitCode {
     // only ever uses `#{pane_id}` here, and that's exactly what we
     // print.
 
-    if let Some(zellij_pane_id) = env::var("ZELLIJ_PANE_ID").ok().and_then(|s| parse_id(&s)) {
-        println!("{}", PaneId(zellij_pane_id));
-        return ExitCode::SUCCESS;
+    // Inside Zellij, the per-pane env var ZELLIJ_PANE_ID identifies
+    // the pane the shim was invoked from. That's almost always what
+    // `display-message -p '#{pane_id}'` should return.
+    if let Ok(raw) = env::var("ZELLIJ_PANE_ID") {
+        match raw.parse::<u32>() {
+            Ok(id) => {
+                println!("{}", PaneId(id));
+                return ExitCode::SUCCESS;
+            }
+            Err(_) => {
+                // Log the malformed value so an operator inspecting
+                // logs sees what happened — silent fallback was a
+                // correctness-reviewer finding on PR #58.
+                eprintln!(
+                    "roger-shim: display-message: ZELLIJ_PANE_ID={:?} is not a u32; falling back to team.list",
+                    raw
+                );
+            }
+        }
     }
 
     // Fallback: ask the plugin which panes it knows about.
@@ -37,8 +53,4 @@ pub fn run(_args: &[String]) -> ExitCode {
         }
         Err(e) => report_rpc_error("team.list", e),
     }
-}
-
-fn parse_id(s: &str) -> Option<u32> {
-    s.parse().ok()
 }
