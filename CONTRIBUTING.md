@@ -143,10 +143,16 @@ someone else has pushed to the branch since your last fetch.
 4. Open the PR via `gh pr create` or the web UI. Fill out the
    [PR template](.github/PULL_REQUEST_TEMPLATE.md).
 5. CI runs `build` and `commit lint`. Both must pass.
-6. After review (or for solo maintainer work, after CI is green):
-   merge via **rebase**. The repo is configured to allow only
-   "Rebase and merge" in the GitHub UI; squash and merge-commit
-   styles are disabled.
+6. After CI is green, review happens. For Claude-authored PRs the
+   review is mandatory and multi-angle, posted to the PR by 5-10 AI
+   reviewer agents and synthesized by the lead; see
+   [CLAUDE.md](CLAUDE.md) for the full workflow. Human-authored PRs
+   from the maintainer follow the same workflow when authored via
+   Claude; from external contributors, the maintainer decides per-PR
+   whether to spawn a review team.
+7. After review and any amendments, merge via **rebase**. The repo
+   is configured to allow only "Rebase and merge" in the GitHub UI;
+   squash and merge-commit styles are disabled.
 
 If `main` advances while your PR is open, rebase your branch onto
 `main` before merging. Branch protection requires the branch to be

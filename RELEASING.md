@@ -36,8 +36,12 @@ for the versioning policy.
 5. **Commit, push, open PR.** Commit message:
    `chore(release): vX.Y.Z`.
 
-6. **Merge via rebase** once CI is green. (Standard project workflow;
-   branch protection enforces this.)
+6. **Multi-angle review then merge via rebase** once CI is green.
+   Release PRs are not exempt from the review mandate in
+   [CLAUDE.md](CLAUDE.md); use a slim roster (`security`,
+   `correctness`, `changelog-update`, `release-engineering` once
+   that role lands, `documentation`) since the diff is typically
+   small. Merge via rebase after the synthesis comment lands.
 
 7. **Sync local main and tag**:
 
