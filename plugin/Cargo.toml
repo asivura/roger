@@ -26,6 +26,10 @@ roger-proto = { path = "../proto" }
 # `from_value`, and the fallback string formatting in lib.rs.
 serde_json = "1"
 # `serde::de::DeserializeOwned` is the trait bound on the
-# `parse_params<T>` helper in lib.rs. No `derive` feature needed —
-# the derived `Deserialize` impls live in roger-proto.
+# `parse_params<T>` helper in lib.rs. We don't request `derive` here
+# — the derived `Deserialize` impls already live in roger-proto.
+# Note: Cargo's feature unification will still enable `serde/derive`
+# in the final build because roger-proto pulls it transitively;
+# omitting it here just signals our direct intent. Workspace-level
+# dedup of serde / serde_json versions is tracked as #41.
 serde = "1"
