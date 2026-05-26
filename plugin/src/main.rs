@@ -457,13 +457,20 @@ impl State {
 
     /// `Event::CommandPaneExited` handler (#8).
     ///
-    /// Mark the matching teammate as exited and record the exit code.
-    /// We do **not** remove from `State::teammates` here — the pane
-    /// (and its scrollback) survives until the operator closes it
-    /// (which produces `PaneClosed`) or re-runs it
-    /// (`CommandPaneReRun`, which clears the exited state). Keeping
-    /// the entry lets `team.list` continue to surface the dead
-    /// teammate, so the operator can inspect the exit status.
+    /// Behavior depends on `exit_code`:
+    ///
+    /// - **`Some(0)` — clean exit**: remove the teammate from state
+    ///   and close the pane immediately. The operator doesn't need
+    ///   to see a "claude finished its turn" post-mortem; leaving the
+    ///   pane open just clutters the layout.
+    /// - **`Some(N)` where N != 0 — non-zero exit**: mark the entry
+    ///   `exited: true` and record the code, but keep the pane open
+    ///   for inspection. The operator can read scrollback to debug
+    ///   why claude crashed, then close the pane manually
+    ///   (`PaneClosed` will clean up state).
+    /// - **`None` — exit code not reported by Zellij**: mark the
+    ///   entry exited but keep the pane open (conservative — we
+    ///   can't tell if it was clean).
     ///
     /// An unknown `pane_id` is a normal case, not an error: if
     /// `team.kill` already removed the entry, the eventual
@@ -481,6 +488,14 @@ impl State {
                     t.exited || t.exit_code.is_none(),
                     "TeammatePaneInfo invariant: exit_code is Some only when exited"
                 );
+
+                // Auto-close pane on clean exit. Keep open on error
+                // so the operator can inspect what went wrong before
+                // closing the pane manually.
+                if t.exit_code == Some(0) {
+                    self.teammates.remove(&pane_id);
+                    close_pane_with_id(PaneId::Terminal(pane_id));
+                }
             }
             None => {
                 eprintln!(

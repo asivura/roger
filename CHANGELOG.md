@@ -202,6 +202,34 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Teammate panes auto-close on clean exit. Two coordinated changes:
+  - **Shim**: `shim/src/commands/spawn.rs` no longer spawns a
+    long-lived `$SHELL` as the placeholder. Instead it spawns
+    `$SHELL -c 'IFS= read -r cmd && eval "exec $cmd"'`, which
+    waits for the follow-up `send-keys` line, then replaces itself
+    (via `exec`) with the actual teammate command. The pane's main
+    process becomes the teammate, not a shell hosting it.
+  - **Plugin**: `on_command_pane_exited` now removes the entry from
+    `State::teammates` and calls `close_pane_with_id` when the
+    exit code is `Some(0)`. Non-zero exits keep the pane open so
+    the operator can read the scrollback to debug; `None` exit
+    codes (rare) are also kept open conservatively. The
+    `team.kill` path is unchanged — its optimistic
+    `close_pane_with_id` already closes the pane immediately.
+
+  End-to-end consequence: after a `/team` shutdown where every
+  teammate finishes cleanly, the layout returns to just the lead
+  pane with no leftover `$SHELL` prompts.
+
+  Trust contract note: the `read`-and-`eval` chain in the shim is
+  only safe under the v0.1 single-producer model (Claude Code's
+  TmuxBackend via roger-shim is the only expected `send-keys`
+  source). Hostile shell metacharacters in the payload could
+  escape into `eval`. Acceptable per [`docs/trust-model.md`](docs/trust-model.md).
+  Docs updated in [`docs/shim.md`](docs/shim.md) and
+  [`docs/usage.md`](docs/usage.md).
+  ([#63](https://github.com/asivura/roger/pull/63))
+
 - Extracted `parse_params<T>` helper for the params-deserialization
   prelude shared by `team.spawn` / `team.send` / `team.kill`. Three
   identical match arms collapse to a single `Self::parse_params`
