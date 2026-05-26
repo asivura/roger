@@ -87,6 +87,21 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   all in; #8 wires `PaneClosed` / `CommandPaneExited` into
   `State::teammates` cleanup as the remaining Phase B item.
   ([#50](https://github.com/asivura/roger/pull/50))
+- Pane lifecycle wiring: `Event::CommandPaneExited` marks the
+  matching teammate's `exited` flag and records the exit code,
+  `Event::PaneClosed(PaneId::Terminal(_))` removes the entry
+  (idempotent w.r.t. `team.kill`'s optimistic removal),
+  `Event::CommandPaneReRun` clears `exited` / `exit_code` so the
+  teammate surfaces as live again. The handler matches on `PaneId`
+  variants and only acts on `Terminal(_)` — plugin-pane closures
+  are logged and ignored, since we never spawn teammates as
+  plugins. New optional wire field `exit_code: Option<i32>` on
+  `TeammatePaneInfo`, with `skip_serializing_if = "Option::is_none"`
+  so existing `team.list` consumers are unaffected. 4 additional
+  unit tests covering the omit/serialize cases (total 26/26 pass).
+  With this PR Phase B is functionally complete; the next PRs
+  iterate on the existing surface.
+  ([#54](https://github.com/asivura/roger/pull/54))
 
 ### Changed
 
