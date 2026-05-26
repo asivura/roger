@@ -10,11 +10,13 @@
 //! Implemented methods:
 //!   - `team.list` (PR #35)
 //!   - `team.spawn` (PR #44)
-//!   - `team.send` + `team.kill` (this PR — #7)
-//!
-//! Planned:
-//!   - lifecycle wiring (#8) — `CommandPaneExited` marks teammate
-//!     `exited: true`, `PaneClosed` removes from `State::teammates`
+//!   - `team.send` + `team.kill` (PR #50)
+//!   - pane lifecycle wiring (this PR — #8): `CommandPaneExited`
+//!     marks the teammate `exited: true` and records the exit code,
+//!     `PaneClosed` removes the entry from `State::teammates` (idempotent
+//!     w.r.t. `team.kill`'s optimistic removal), `CommandPaneReRun`
+//!     clears the `exited` / `exit_code` fields so the teammate
+//!     surfaces as live again.
 //!
 //! ## team.spawn: deferred-reply pattern
 //!
@@ -136,16 +138,13 @@ impl ZellijPlugin for State {
                 self.on_command_pane_opened(pane_id, &ctx);
             }
             Event::CommandPaneExited(pane_id, exit_code, _ctx) => {
-                // Full lifecycle handling (mark `exited: true`, log
-                // exit_code) lands in #8.
-                eprintln!(
-                    "[roger] CommandPaneExited pane_id={} exit_code={:?}",
-                    pane_id, exit_code
-                );
+                self.on_command_pane_exited(pane_id, exit_code);
             }
             Event::PaneClosed(pane_id) => {
-                // #8 will remove from `self.teammates` here.
-                eprintln!("[roger] PaneClosed pane_id={:?}", pane_id);
+                self.on_pane_closed(pane_id);
+            }
+            Event::CommandPaneReRun(pane_id, _ctx) => {
+                self.on_command_pane_rerun(pane_id);
             }
             _ => {}
         }
@@ -365,6 +364,7 @@ impl State {
                 name: pending.name,
                 command: Some(pending.command),
                 exited: false,
+                exit_code: None,
             },
         );
 
@@ -383,6 +383,85 @@ impl State {
             }
         };
         reply(&pending.pipe_id, &Response::ok(&pending.request_id, result));
+    }
+
+    /// `Event::CommandPaneExited` handler (#8).
+    ///
+    /// Mark the matching teammate as exited and record the exit code.
+    /// We do **not** remove from `State::teammates` here — the pane
+    /// (and its scrollback) survives until the operator closes it
+    /// (which produces `PaneClosed`) or re-runs it
+    /// (`CommandPaneReRun`, which clears the exited state). Keeping
+    /// the entry lets `team.list` continue to surface the dead
+    /// teammate, so the operator can inspect the exit status.
+    ///
+    /// An unknown `pane_id` is a normal case, not an error: if
+    /// `team.kill` already removed the entry, the eventual
+    /// `CommandPaneExited` finds nothing to update. Logged and
+    /// dropped.
+    fn on_command_pane_exited(&mut self, pane_id: u32, exit_code: Option<i32>) {
+        match self.teammates.get_mut(&pane_id) {
+            Some(t) => {
+                t.exited = true;
+                t.exit_code = exit_code;
+            }
+            None => {
+                eprintln!(
+                    "[roger] CommandPaneExited pane_id={} exit_code={:?} (not tracked; ignored)",
+                    pane_id, exit_code
+                );
+            }
+        }
+    }
+
+    /// `Event::PaneClosed` handler (#8).
+    ///
+    /// Remove the teammate entry. Idempotent: if `team.kill` already
+    /// removed the pane optimistically (PR #50), this is a no-op.
+    /// Only `PaneId::Terminal` ids can match `State::teammates`
+    /// because the only insertion site is `on_command_pane_opened`,
+    /// which receives a `u32` terminal pane id (validated by the
+    /// zellij-api reviewer on PR #50). Plugin-pane closures are
+    /// logged and ignored.
+    fn on_pane_closed(&mut self, pane_id: PaneId) {
+        match pane_id {
+            PaneId::Terminal(id) => {
+                let removed = self.teammates.remove(&id).is_some();
+                if !removed {
+                    eprintln!(
+                        "[roger] PaneClosed pane_id=Terminal({}) (not tracked; ignored)",
+                        id
+                    );
+                }
+            }
+            PaneId::Plugin(id) => {
+                eprintln!(
+                    "[roger] PaneClosed pane_id=Plugin({}); we never track plugin panes",
+                    id
+                );
+            }
+        }
+    }
+
+    /// `Event::CommandPaneReRun` handler (#8).
+    ///
+    /// Operator re-ran an exited teammate's command. Clear the exited
+    /// state so `team.list` surfaces it as live again. The pane id is
+    /// stable across re-runs in zellij-tile 0.43.1, so no remap is
+    /// needed — we just flip the flags back.
+    fn on_command_pane_rerun(&mut self, pane_id: u32) {
+        match self.teammates.get_mut(&pane_id) {
+            Some(t) => {
+                t.exited = false;
+                t.exit_code = None;
+            }
+            None => {
+                eprintln!(
+                    "[roger] CommandPaneReRun pane_id={} (not tracked; ignored)",
+                    pane_id
+                );
+            }
+        }
     }
 
     /// `team.send` — write text into a tracked teammate pane's PTY.

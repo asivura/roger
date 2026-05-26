@@ -53,11 +53,24 @@ Success:
         "name": "researcher",
         "command": "claude --agent-id researcher@my-team ...",
         "exited": false
+      },
+      {
+        "agent_id": "linter@my-team",
+        "pane_id": 18,
+        "name": "linter",
+        "exited": true,
+        "exit_code": 0
       }
     ]
   }
 }
 ```
+
+`exit_code` is omitted from the JSON when no exit code is known
+(running teammate, or a teammate that exited without Zellij reporting
+a code). Once set, it remains attached to the entry until either
+`team.kill` / a `PaneClosed` event removes the entry, or the operator
+re-runs the command (`CommandPaneReRun` clears the field).
 
 Error:
 
@@ -100,6 +113,17 @@ Returns the panes currently tracked by `roger`.
 
 The list is empty when no teammates have been spawned. That's a
 valid response, not an error.
+
+**Lifecycle field semantics (post-#54):**
+
+| Field | Set by | Cleared by |
+|---|---|---|
+| `exited` | `Event::CommandPaneExited` (true) | `team.kill` / `PaneClosed` (removes entry); `CommandPaneReRun` (back to false) |
+| `exit_code` | `Event::CommandPaneExited` (the reported code) | `team.kill` / `PaneClosed` (removes entry); `CommandPaneReRun` (back to None — omitted on wire) |
+
+A teammate whose underlying command exited is **kept** in the map so
+`team.list` can surface its post-mortem status. Only `team.kill` and
+the Zellij `PaneClosed` event remove the entry.
 
 ### `team.spawn`
 

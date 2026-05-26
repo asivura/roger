@@ -78,7 +78,14 @@ pub struct ErrorPayload {
 }
 
 /// Per-teammate state the plugin tracks. Returned by `team.list`.
-/// Spawn / lifecycle wiring lands in #6 and #8.
+///
+/// `exited` flips to `true` when Zellij emits `CommandPaneExited` for
+/// the underlying pane; the pane (and its scrollback) survives until
+/// the operator closes it or re-runs it. `exit_code` captures the
+/// process's exit status when known — `None` while the process is
+/// still running or when Zellij reports no exit code, `Some(code)`
+/// after `CommandPaneExited`. Omitted from the wire format when
+/// `None` so existing `team.list` consumers are unaffected.
 #[derive(Debug, Clone, Serialize)]
 pub struct TeammatePaneInfo {
     pub agent_id: String,
@@ -87,6 +94,8 @@ pub struct TeammatePaneInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
     pub exited: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
 }
 
 /// Result type for the `team.list` method.
@@ -262,6 +271,7 @@ mod tests {
                 name: "researcher".into(),
                 command: Some("claude --agent-id ...".into()),
                 exited: false,
+                exit_code: None,
             }],
         };
         let s = serde_json::to_string(&r).unwrap();
@@ -392,6 +402,7 @@ mod tests {
             name: "n".into(),
             command: None,
             exited: false,
+            exit_code: None,
         };
         let s = serde_json::to_string(&t).unwrap();
         assert!(
@@ -399,5 +410,81 @@ mod tests {
             "command field should be omitted when None, got: {}",
             s
         );
+    }
+
+    // --- exit_code lifecycle wiring (#8) -------------------------
+
+    #[test]
+    fn teammate_pane_info_omits_exit_code_when_none() {
+        // Default state for a live (or freshly-spawned) teammate: no
+        // exit code yet. The field must not appear on the wire so
+        // existing `team.list` consumers that don't know about
+        // `exit_code` are unaffected.
+        let t = TeammatePaneInfo {
+            agent_id: "a".into(),
+            pane_id: 1,
+            name: "n".into(),
+            command: None,
+            exited: false,
+            exit_code: None,
+        };
+        let s = serde_json::to_string(&t).unwrap();
+        assert!(
+            !s.contains("\"exit_code\""),
+            "exit_code field should be omitted when None, got: {}",
+            s
+        );
+    }
+
+    #[test]
+    fn teammate_pane_info_serializes_exit_code_when_some() {
+        // After `CommandPaneExited` the plugin sets `exited = true`
+        // and stores the exit code. Both fields must round-trip on
+        // the wire so the shim (and any future consumer) can render
+        // the post-mortem status of a teammate pane.
+        let t = TeammatePaneInfo {
+            agent_id: "a".into(),
+            pane_id: 1,
+            name: "n".into(),
+            command: None,
+            exited: true,
+            exit_code: Some(0),
+        };
+        let s = serde_json::to_string(&t).unwrap();
+        assert!(s.contains(r#""exited":true"#), "got: {}", s);
+        assert!(s.contains(r#""exit_code":0"#), "got: {}", s);
+    }
+
+    #[test]
+    fn teammate_pane_info_serializes_nonzero_exit_code() {
+        // Non-zero exit codes are the interesting case for a shim
+        // that wants to surface failures to the operator.
+        let t = TeammatePaneInfo {
+            agent_id: "a".into(),
+            pane_id: 1,
+            name: "n".into(),
+            command: None,
+            exited: true,
+            exit_code: Some(137),
+        };
+        let s = serde_json::to_string(&t).unwrap();
+        assert!(s.contains(r#""exit_code":137"#), "got: {}", s);
+    }
+
+    #[test]
+    fn teammate_pane_info_serializes_negative_exit_code() {
+        // i32 is the type Zellij hands us; signed values are
+        // possible (e.g. a -1 sentinel) so the wire format must
+        // round-trip them faithfully.
+        let t = TeammatePaneInfo {
+            agent_id: "a".into(),
+            pane_id: 1,
+            name: "n".into(),
+            command: None,
+            exited: true,
+            exit_code: Some(-1),
+        };
+        let s = serde_json::to_string(&t).unwrap();
+        assert!(s.contains(r#""exit_code":-1"#), "got: {}", s);
     }
 }
