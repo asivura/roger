@@ -169,9 +169,31 @@ the Zellij side.
 
 **Result:** `{ ok: true }`.
 
+**Result semantics:** `{ ok: true }` means *the plugin dispatched
+the write to Zellij*, not *the bytes reached the PTY*. If the pane
+exits between the plugin's membership check and Zellij's host-side
+write, the bytes are silently dropped (Zellij does not surface a
+host-side error to the plugin). Callers that need delivery
+confirmation must read pane contents separately.
+
+**Trust contract:** `text` is delivered to the PTY as-is — ANSI
+CSI/OSC sequences, control characters, and `\r` (which causes a
+shell to execute the buffered line) all pass through unchanged.
+This matches `tmux send-keys` and is fine while the sole producer
+is `roger-shim` relaying from Claude Code's own TmuxBackend. Do not
+route untrusted text (e.g. another teammate's stdout) through this
+method without sanitization — the same code path then becomes a
+terminal-injection sink (OSC 52 clipboard writes, OSC 8 hyperlinks,
+title spoof, cursor-position queries echoed back).
+
 **Errors:**
 - `INVALID_PARAMS` (-32602) — params don't match expected shape, OR
-  `pane_id` isn't in `State::teammates` (unknown / dead pane).
+  `pane_id` isn't in `State::teammates` (unknown / dead pane). The
+  error message is value-free (`"unknown pane_id"` rather than
+  `"unknown pane_id: 42"`) — the caller already knows the value
+  they sent, and keeping the response value-free removes a
+  behavioral oracle that a future authz layer would otherwise
+  inherit.
 
 ### `team.kill`
 
@@ -186,7 +208,7 @@ find no matching entry and harmlessly no-op.
 
 **Errors:**
 - `INVALID_PARAMS` (-32602) — params don't match, OR `pane_id` isn't
-  in `State::teammates`.
+  in `State::teammates`. Same value-free message as `team.send`.
 
 ## Error codes
 

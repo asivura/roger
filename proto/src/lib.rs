@@ -126,6 +126,18 @@ pub struct SpawnResult {
 /// Params for the `team.send` method. Writes `text` into the
 /// teammate's PTY (the inner half of TmuxBackend's `send-keys`
 /// semantics).
+///
+/// **Trust contract:** `text` is delivered to the PTY as-is — ANSI
+/// CSI/OSC sequences, control characters, and `\r` (which causes a
+/// shell to execute the buffered line) are all passed through. This
+/// is the same trust model as
+/// [`tmux send-keys`](https://man.openbsd.org/tmux.1#send-keys) and
+/// is fine while the sole producer is `roger-shim` relaying from
+/// Claude Code's own TmuxBackend. **Do not route untrusted output
+/// (e.g. another teammate's stdout) through this method without
+/// adding a sanitization layer first** — the same code path then
+/// becomes a terminal-injection sink (OSC 52 clipboard writes,
+/// OSC 8 hyperlinks, title spoof, cursor-position queries).
 #[derive(Debug, Clone, Deserialize)]
 pub struct SendParams {
     pub pane_id: u32,

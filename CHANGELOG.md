@@ -82,7 +82,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fire-and-forget). `team.kill` removes the entry from
   `State::teammates` optimistically. New types `SendParams`,
   `KillParams`, and `OkResult` in `roger-proto`. 5 additional unit
-  tests (total 22/22 pass). (this PR)
+  tests (total 22/22 pass). With this PR the four Phase B protocol
+  methods (`team.list`, `team.spawn`, `team.send`, `team.kill`) are
+  all in; #8 wires `PaneClosed` / `CommandPaneExited` into
+  `State::teammates` cleanup as the remaining Phase B item.
+  ([#50](https://github.com/asivura/roger/pull/50))
 
 ### Changed
 
