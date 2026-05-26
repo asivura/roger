@@ -2194,6 +2194,8 @@ dependencies = [
 name = "roger"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "zellij-tile",
 ]
 

@@ -37,9 +37,21 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (package `roger`, the Wasm crate) and `shim/` (package
   `roger-shim`, a host-target binary named `tmux` that will translate
   Claude Code's TmuxBackend invocations into roger RPC calls in
-  Phase C). Shim is a v0 stub today. (this PR)
+  Phase C). Shim is a v0 stub today.
+  ([#28](https://github.com/asivura/roger/pull/28))
 - `cargo build-shim` / `cargo check-shim` aliases for the host-target
-  shim crate. (this PR)
+  shim crate.
+  ([#28](https://github.com/asivura/roger/pull/28))
+- Mandatory multi-angle PR review workflow documented in `CLAUDE.md`:
+  every PR Claude creates here gets a team of 5-10 AI reviewer agents
+  whose angles are chosen based on PR context. Each posts a PR comment;
+  the lead synthesizes them into one consolidation comment.
+  ([#29](https://github.com/asivura/roger/pull/29))
+- JSON-RPC-style protocol over `zellij pipe`, documented in
+  `docs/rpc-protocol.md`, with `team.list` as the first method
+  implemented. `team.list` returns currently-tracked teammate panes
+  (empty until `team.spawn` populates the state map in #6).
+  ([#35](https://github.com/asivura/roger/pull/35))
 
 ### Changed
 
