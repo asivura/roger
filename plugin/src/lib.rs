@@ -127,7 +127,6 @@ impl ZellijPlugin for State {
         ]);
 
         subscribe(&[
-            EventType::PaneUpdate,
             EventType::CommandPaneOpened,
             EventType::CommandPaneExited,
             EventType::CommandPaneReRun,
@@ -185,6 +184,24 @@ impl ZellijPlugin for State {
 }
 
 impl State {
+    /// Deserialize `request.params` into the method-specific params
+    /// struct, returning a ready-to-send `INVALID_PARAMS` `Response`
+    /// on failure. The error message follows the `"invalid {method}
+    /// params: {serde error}"` shape every handler used before this
+    /// helper landed. (#51 — followups from PR #50 review.)
+    fn parse_params<T: serde::de::DeserializeOwned>(
+        request: &Request,
+        method: &str,
+    ) -> Result<T, Response> {
+        serde_json::from_value(request.params.clone()).map_err(|e| {
+            Response::err(
+                &request.id,
+                error_codes::INVALID_PARAMS,
+                format!("invalid {} params: {}", method, e),
+            )
+        })
+    }
+
     /// Two-stage parse so the `id` survives a wrong-shape body and we
     /// can emit the right error code (`PARSE_ERROR` for non-JSON,
     /// `INVALID_REQUEST` for JSON-but-wrong-shape). PR #35 review
@@ -250,28 +267,19 @@ impl State {
     fn handle_team_list(&self, request: &Request) -> Response {
         let panes: Vec<TeammatePaneInfo> = self.teammates.values().cloned().collect();
         let result = TeamListResult { panes };
-        match serde_json::to_value(&result) {
-            Ok(value) => Response::ok(&request.id, value),
-            Err(e) => Response::err(
-                &request.id,
-                error_codes::INTERNAL_ERROR,
-                format!("serialize team.list result: {}", e),
-            ),
-        }
+        // `TeamListResult` is a `Vec` of owned-`String` structs;
+        // serde_json cannot fail to serialize this shape. (#52 —
+        // dropped the dead INTERNAL_ERROR branch.)
+        let value = serde_json::to_value(&result).expect("TeamListResult serializes infallibly");
+        Response::ok(&request.id, value)
     }
 
     /// `team.spawn` — async via the correlation-token pattern. See the
     /// module doc comment for the full flow.
     fn handle_team_spawn(&mut self, pipe_id: &str, request: &Request) -> DispatchOutcome {
-        let params: SpawnParams = match serde_json::from_value(request.params.clone()) {
+        let params: SpawnParams = match Self::parse_params(request, "team.spawn") {
             Ok(p) => p,
-            Err(e) => {
-                return DispatchOutcome::Reply(Response::err(
-                    &request.id,
-                    error_codes::INVALID_PARAMS,
-                    format!("invalid team.spawn params: {}", e),
-                ));
-            }
+            Err(resp) => return DispatchOutcome::Reply(resp),
         };
 
         if params.argv.is_empty() {
@@ -373,20 +381,10 @@ impl State {
             },
         );
 
-        let result = match serde_json::to_value(SpawnResult { pane_id }) {
-            Ok(v) => v,
-            Err(e) => {
-                reply(
-                    &pending.pipe_id,
-                    &Response::err(
-                        &pending.request_id,
-                        error_codes::INTERNAL_ERROR,
-                        format!("serialize team.spawn result: {}", e),
-                    ),
-                );
-                return;
-            }
-        };
+        // `SpawnResult { pane_id: u32 }` cannot fail to serialize.
+        // (#52 — dropped the dead INTERNAL_ERROR branch.)
+        let result = serde_json::to_value(SpawnResult { pane_id })
+            .expect("SpawnResult serializes infallibly");
         reply(&pending.pipe_id, &Response::ok(&pending.request_id, result));
     }
 
@@ -492,15 +490,9 @@ impl State {
     /// between the membership check and the host call — harmless,
     /// since #8's `PaneClosed` cleanup will remove the entry shortly.
     fn handle_team_send(&self, request: &Request) -> Response {
-        let params: SendParams = match serde_json::from_value(request.params.clone()) {
+        let params: SendParams = match Self::parse_params(request, "team.send") {
             Ok(p) => p,
-            Err(e) => {
-                return Response::err(
-                    &request.id,
-                    error_codes::INVALID_PARAMS,
-                    format!("invalid team.send params: {}", e),
-                );
-            }
+            Err(resp) => return resp,
         };
 
         if !self.teammates.contains_key(&params.pane_id) {
@@ -518,14 +510,10 @@ impl State {
 
         write_chars_to_pane_id(&params.text, PaneId::Terminal(params.pane_id));
 
-        match serde_json::to_value(OkResult { ok: true }) {
-            Ok(v) => Response::ok(&request.id, v),
-            Err(e) => Response::err(
-                &request.id,
-                error_codes::INTERNAL_ERROR,
-                format!("serialize team.send result: {}", e),
-            ),
-        }
+        // `OkResult { ok: bool }` cannot fail to serialize. (#52.)
+        let value =
+            serde_json::to_value(OkResult { ok: true }).expect("OkResult serializes infallibly");
+        Response::ok(&request.id, value)
     }
 
     /// `team.kill` — close a tracked teammate pane and remove it
@@ -535,15 +523,9 @@ impl State {
     /// fire-and-forget. The eventual `PaneClosed` event will find no
     /// matching entry and harmlessly no-op (#8 wiring).
     fn handle_team_kill(&mut self, request: &Request) -> Response {
-        let params: KillParams = match serde_json::from_value(request.params.clone()) {
+        let params: KillParams = match Self::parse_params(request, "team.kill") {
             Ok(p) => p,
-            Err(e) => {
-                return Response::err(
-                    &request.id,
-                    error_codes::INVALID_PARAMS,
-                    format!("invalid team.kill params: {}", e),
-                );
-            }
+            Err(resp) => return resp,
         };
 
         if self.teammates.remove(&params.pane_id).is_none() {
@@ -558,14 +540,10 @@ impl State {
 
         close_pane_with_id(PaneId::Terminal(params.pane_id));
 
-        match serde_json::to_value(OkResult { ok: true }) {
-            Ok(v) => Response::ok(&request.id, v),
-            Err(e) => Response::err(
-                &request.id,
-                error_codes::INTERNAL_ERROR,
-                format!("serialize team.kill result: {}", e),
-            ),
-        }
+        // `OkResult { ok: bool }` cannot fail to serialize. (#52.)
+        let value =
+            serde_json::to_value(OkResult { ok: true }).expect("OkResult serializes infallibly");
+        Response::ok(&request.id, value)
     }
 }
 

@@ -263,3 +263,11 @@ The plugin only responds to `PipeSource::Cli`. Plugin-to-plugin
 (`PipeSource::Plugin`) and keybind-triggered (`PipeSource::Keybind`)
 pipes are logged and ignored. The shim path is the only path that
 needs to work for v0.1.
+
+## Trust model
+
+The protocol has no authentication, signing, or rate limiting. Any
+local process at the same UID as the Zellij session can call every
+method. See [`trust-model.md`](trust-model.md) for the full
+deployment-assumptions document — required reading before deploying
+roger anywhere shared-UID untrusted code might run.
