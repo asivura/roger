@@ -62,6 +62,14 @@ struct State {
     /// id (the value it received from `team.spawn`), so keying by
     /// pane id makes those lookups direct. Populated by the
     /// `CommandPaneOpened` handler after a `team.spawn` succeeds.
+    ///
+    /// **Invariant:** the only insertion site is
+    /// `on_command_pane_opened`. `team.send` and `team.kill` rely on
+    /// this to be safe in the face of Zellij pane-id reuse: if a
+    /// terminal pane closes and Zellij later assigns the same numeric
+    /// id to a non-Roger pane, that pane won't be in `teammates`, so
+    /// the membership check rejects the operation. Don't add insertion
+    /// sites elsewhere without revisiting the security review on #50.
     teammates: HashMap<u32, TeammatePaneInfo>,
     /// In-flight `team.spawn` calls awaiting `CommandPaneOpened`,
     /// keyed by a plugin-internal correlation token (see
@@ -378,8 +386,16 @@ impl State {
     }
 
     /// `team.send` — write text into a tracked teammate pane's PTY.
-    /// Synchronous: `write_chars_to_pane_id` is fire-and-forget on
-    /// the Zellij side; the RPC replies as soon as we dispatch it.
+    ///
+    /// Synchronous at the JSON-RPC layer: we reply as soon as the
+    /// write is dispatched to Zellij. The underlying
+    /// `write_chars_to_pane_id` is fire-and-forget host-side
+    /// (`zellij-tile 0.43.1` returns `()` with no acknowledgement),
+    /// so `{ "ok": true }` means *the plugin handed the bytes to
+    /// Zellij*, not *the bytes reached the PTY*. The most plausible
+    /// failure mode is a write swallowed by a pane that exited
+    /// between the membership check and the host call — harmless,
+    /// since #8's `PaneClosed` cleanup will remove the entry shortly.
     fn handle_team_send(&self, request: &Request) -> Response {
         let params: SendParams = match serde_json::from_value(request.params.clone()) {
             Ok(p) => p,
@@ -393,10 +409,15 @@ impl State {
         };
 
         if !self.teammates.contains_key(&params.pane_id) {
+            // Don't echo `params.pane_id` in the message — the caller
+            // already knows the value they sent. Keeping the response
+            // value-free removes a behavioral oracle that a future
+            // authz layer would otherwise inherit by accident
+            // (security review, PR #50).
             return Response::err(
                 &request.id,
                 error_codes::INVALID_PARAMS,
-                format!("unknown pane_id: {}", params.pane_id),
+                "unknown pane_id".to_string(),
             );
         }
 
@@ -431,10 +452,12 @@ impl State {
         };
 
         if self.teammates.remove(&params.pane_id).is_none() {
+            // Same rationale as `handle_team_send`: don't echo the
+            // caller-supplied pane id back (security review, PR #50).
             return Response::err(
                 &request.id,
                 error_codes::INVALID_PARAMS,
-                format!("unknown pane_id: {}", params.pane_id),
+                "unknown pane_id".to_string(),
             );
         }
 
