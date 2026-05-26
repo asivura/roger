@@ -25,3 +25,7 @@ roger-proto = { path = "../proto" }
 # Used directly here (not just through roger-proto) for `serde_json::from_str`,
 # `from_value`, and the fallback string formatting in lib.rs.
 serde_json = "1"
+# `serde::de::DeserializeOwned` is the trait bound on the
+# `parse_params<T>` helper in lib.rs. No `derive` feature needed —
+# the derived `Deserialize` impls live in roger-proto.
+serde = "1"

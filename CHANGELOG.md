@@ -102,8 +102,36 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   With this PR Phase B is functionally complete; the next PRs
   iterate on the existing surface.
   ([#54](https://github.com/asivura/roger/pull/54))
+- `docs/trust-model.md`: normative v0.1 trust-model documentation
+  (UID-local, single-user assumption; `team.send`'s extra surface
+  on the PTY trust contract; what's a trust boundary vs not).
+  Linked from `docs/rpc-protocol.md`. Closes #53.
+  ([#56](https://github.com/asivura/roger/pull/56))
 
 ### Changed
+
+- Extracted `parse_params<T>` helper for the params-deserialization
+  prelude shared by `team.spawn` / `team.send` / `team.kill`. Three
+  identical match arms collapse to a single `Self::parse_params`
+  call per handler. No behavior change; error-message format is
+  preserved. Closes #51.
+  ([#56](https://github.com/asivura/roger/pull/56))
+- Dropped the dead `INTERNAL_ERROR` fallback branches from the
+  three result-serialization sites whose result types
+  (`OkResult { ok: bool }`, `SpawnResult { pane_id: u32 }`,
+  `TeamListResult { panes: Vec<TeammatePaneInfo> }`) cannot fail
+  to serialize. Each site now uses `.expect("… serializes
+  infallibly")` to assert the invariant loudly. The `reply()`
+  fallback for the top-level `Response` envelope is unchanged.
+  Closes #52.
+  ([#56](https://github.com/asivura/roger/pull/56))
+- Dropped `EventType::PaneUpdate` from the plugin's subscription
+  list. The plugin never matched it in `update()` (it fell through
+  the `_ => {}` arm) and we have no use case for pane title /
+  dimension change tracking in Phase B. Avoiding speculative
+  subscriptions per the project's "don't design for hypothetical
+  future requirements" rule. Closes #55.
+  ([#56](https://github.com/asivura/roger/pull/56))
 
 - Renamed cargo alias `check-all` → `check-plugin` for consistency
   with `check-shim` and `check-proto`. The old name was misleading

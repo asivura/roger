@@ -2195,6 +2195,7 @@ name = "roger"
 version = "0.1.0"
 dependencies = [
  "roger-proto",
+ "serde",
  "serde_json",
  "zellij-tile",
 ]
