@@ -195,6 +195,17 @@ pub mod error_codes {
     pub const SPAWN_FAILED: i32 = -32001;
 }
 
+/// Canonical error-message text for "the pane_id you supplied isn't
+/// in `State::teammates`". Returned by both `team.send` and
+/// `team.kill` when the pane was never tracked or was already
+/// removed. Defined here (rather than as a string literal at each
+/// reply site) so the shim's `is_unknown_pane_id` matcher can stay
+/// in sync — security + correctness reviewers on PR #58 flagged the
+/// duplicated-literal pattern as brittle. Plugin-side reply sites
+/// use this directly; shim-side error classification matches the
+/// same value.
+pub const UNKNOWN_PANE_ID_MSG: &str = "unknown pane_id";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -567,5 +578,69 @@ mod tests {
             "TeamListResult round-trip mismatch via: {}",
             s
         );
+    }
+
+    // --- Request / Response envelope round-trip (PR #58) -------
+    //
+    // The wire-compat reviewer on PR #58 flagged that the new
+    // `Request: Serialize` and `Response: Deserialize` derives (added
+    // so the shim can construct/parse envelopes) were exercised only
+    // transitively via `rpc::call`. Add direct round-trip tests so
+    // any future serde-derive regression in the envelope types is
+    // caught at the proto layer.
+
+    #[test]
+    fn request_round_trips_through_serialize_then_deserialize() {
+        let payload = serde_json::json!({
+            "agent_id": "researcher@team",
+            "name": "researcher",
+            "cwd": "/home/ubuntu",
+            "argv": ["claude", "--agent-id", "researcher@team"],
+        });
+        let original = Request {
+            method: "team.spawn".to_string(),
+            id: "11111111-2222-3333-4444-555555555555".to_string(),
+            params: payload.clone(),
+        };
+        let s = serde_json::to_string(&original).expect("Request serialize");
+        let parsed: Request = serde_json::from_str(&s).expect("Request round-trip");
+        assert_eq!(parsed.method, "team.spawn");
+        assert_eq!(parsed.id, "11111111-2222-3333-4444-555555555555");
+        assert_eq!(parsed.params, payload);
+    }
+
+    #[test]
+    fn response_ok_round_trips() {
+        let original = Response::ok("abc", serde_json::json!({"pane_id": 17}));
+        let s = serde_json::to_string(&original).expect("Response serialize");
+        let parsed: Response = serde_json::from_str(&s).expect("Response round-trip");
+        assert_eq!(parsed.id, "abc");
+        assert_eq!(parsed.result, Some(serde_json::json!({"pane_id": 17})));
+        assert!(parsed.error.is_none());
+    }
+
+    #[test]
+    fn response_err_round_trips() {
+        let original = Response::err("xyz", error_codes::INVALID_PARAMS, UNKNOWN_PANE_ID_MSG);
+        let s = serde_json::to_string(&original).expect("Response serialize");
+        let parsed: Response = serde_json::from_str(&s).expect("Response round-trip");
+        assert_eq!(parsed.id, "xyz");
+        assert!(parsed.result.is_none());
+        let err = parsed.error.expect("error present");
+        assert_eq!(err.code, error_codes::INVALID_PARAMS);
+        assert_eq!(err.message, UNKNOWN_PANE_ID_MSG);
+    }
+
+    #[test]
+    fn response_with_omitted_result_and_error_parses_as_both_none() {
+        // Synthetic case — the plugin never emits this shape (it
+        // always sets exactly one), but the `#[serde(default)]` on
+        // both fields means parsing tolerates it. The shim's RPC
+        // client surfaces it as a Protocol error.
+        let s = r#"{"id":"q"}"#;
+        let parsed: Response = serde_json::from_str(s).expect("parse with both omitted");
+        assert_eq!(parsed.id, "q");
+        assert!(parsed.result.is_none());
+        assert!(parsed.error.is_none());
     }
 }

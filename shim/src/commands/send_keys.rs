@@ -52,16 +52,24 @@ fn parse_args(args: &[String]) -> Option<(pane_id::PaneId, Vec<String>)> {
 
     while let Some(arg) = iter.next() {
         match arg.as_str() {
+            // `-t <target>` — the pane id we're targeting.
             "-t" => {
                 let raw = iter.next()?;
                 target = pane_id::parse(raw).ok();
                 target?;
             }
-            // Ignore flags TmuxBackend sometimes passes but which we
-            // don't act on at the per-keystroke level (literal-mode,
-            // no-newline). The `Enter` / `C-m` handling lives in
-            // `render_keys`.
-            "-l" | "-X" | "-x" => {}
+            // Arg-taking flags TmuxBackend may pass. We don't act on
+            // their semantics, but we must consume their *argument*
+            // here so it doesn't get swept into `rest` and corrupt the
+            // keystroke text (correctness reviewer, PR #58).
+            "-N" | "-c" | "-F" => {
+                iter.next();
+            }
+            // Boolean flags we ignore (literal-mode `-l`, expansion
+            // `-X`, mouse-event `-x` `<column>` `<row>` — the latter
+            // has args we'd need to absorb too if it ever shows up;
+            // not on the known TmuxBackend surface so deferred).
+            "-l" | "-X" => {}
             _ => rest.push(arg.clone()),
         }
     }
@@ -132,6 +140,29 @@ mod tests {
     fn render_passes_through_other_tokens_verbatim() {
         let keys = vec_str(&["a", " ", "b"]);
         assert_eq!(render_keys(&keys), "a b");
+    }
+
+    #[test]
+    fn parse_absorbs_arg_taking_flags_not_into_keystrokes() {
+        // Correctness reviewer (PR #58): `-N`, `-c`, `-F` take an
+        // argument that must NOT be swept into the keystrokes.
+        // Before the fix, `-N 5 hello Enter` would render as
+        // "5helloEnter" (corrupting the keys). After: "helloEnter"
+        // (well — with our `Enter` mapping, "hello\r").
+        let args = vec_str(&["-N", "5", "-t", "%17", "hello", "Enter"]);
+        let (pane, keys) = parse_args(&args).expect("parses");
+        assert_eq!(pane.0, 17);
+        assert_eq!(keys, vec_str(&["hello", "Enter"]));
+
+        let args = vec_str(&["-t", "%5", "-c", "client-1", "echo hi", "Enter"]);
+        let (pane, keys) = parse_args(&args).expect("parses");
+        assert_eq!(pane.0, 5);
+        assert_eq!(keys, vec_str(&["echo hi", "Enter"]));
+
+        let args = vec_str(&["-t", "%3", "-F", "#{pane_id}", "stuff"]);
+        let (pane, keys) = parse_args(&args).expect("parses");
+        assert_eq!(pane.0, 3);
+        assert_eq!(keys, vec_str(&["stuff"]));
     }
 
     fn vec_str(items: &[&str]) -> Vec<String> {

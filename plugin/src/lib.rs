@@ -47,7 +47,7 @@ use zellij_tile::prelude::*;
 
 use roger_proto::{
     error_codes, KillParams, OkResult, Request, Response, SendParams, SpawnParams, SpawnResult,
-    TeamListResult, TeammatePaneInfo,
+    TeamListResult, TeammatePaneInfo, UNKNOWN_PANE_ID_MSG,
 };
 
 /// Key used in `CommandToRun`'s `Context` map to carry the per-spawn
@@ -571,7 +571,7 @@ impl State {
             return Response::err(
                 &request.id,
                 error_codes::INVALID_PARAMS,
-                "unknown pane_id".to_string(),
+                UNKNOWN_PANE_ID_MSG.to_string(),
             );
         }
 
@@ -601,7 +601,7 @@ impl State {
             return Response::err(
                 &request.id,
                 error_codes::INVALID_PARAMS,
-                "unknown pane_id".to_string(),
+                UNKNOWN_PANE_ID_MSG.to_string(),
             );
         }
 
