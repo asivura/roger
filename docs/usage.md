@@ -177,16 +177,25 @@ If `<X>` is something Claude Code added in a recent version and it
 needs real semantics rather than no-op, file an issue. The
 existing handler shape in `shim/src/commands/` is small to extend.
 
-### New teammate pane briefly shows a shell prompt
+### Teammate pane stays open after the teammate exits
 
-Expected. Real tmux's `new-session` / `new-window` / `split-window`
-all create *empty* panes (running `$SHELL`); the follow-up
-`send-keys` is what launches the teammate. roger-shim matches that
-behavior — see [`shim.md`](shim.md#v01-limitations) for the
-detailed rationale. The shell-prompt flash typically lasts
-~50-200ms before `claude` exec's. If it's persisting longer, the
-follow-up `send-keys` failed; check the plugin log for
-`team.send` errors.
+Depends on how the teammate exited:
+
+- **Exit code 0** (clean): the pane should auto-close. If it
+  doesn't, check the plugin log for a `CommandPaneExited` line —
+  the plugin only auto-closes when the exit code is exactly 0. If
+  Zellij reports `None` instead, the pane stays open.
+- **Non-zero exit code**: by design. The pane is preserved so you
+  can read the scrollback to debug what went wrong. Close it
+  manually (`Alt+x` by default, or whatever your keybinding config
+  uses) — that fires `PaneClosed` and cleans up state.
+- **Teammate hung and you killed the pane directly** (Zellij's
+  close keybinding): also fine — `PaneClosed` is the cleanup path.
+
+If you want all panes to disappear unconditionally on teammate
+exit, see `plugin/src/main.rs`'s `on_command_pane_exited` — the
+auto-close threshold is `exit_code == Some(0)`. Loosening it is
+a one-line change.
 
 ### Verifying Claude Code actually routes through TmuxBackend
 

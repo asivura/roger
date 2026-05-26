@@ -31,8 +31,33 @@ pub fn run(_subcommand: &str, args: &[String]) -> ExitCode {
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| "/".to_string());
 
-    // The plugin needs `argv` non-empty; the shell is our placeholder.
-    let argv: Vec<String> = vec![shell];
+    // The plugin needs non-empty `argv`. Real `tmux new-session` /
+    // `new-window` / `split-window` create empty panes (running
+    // `$SHELL`); the follow-up `send-keys` is what launches the
+    // teammate. We can't create an empty pane through `team.spawn`,
+    // so we spawn a small shell snippet that:
+    //   1. waits for one line from stdin (which `send-keys` will
+    //      deliver — typically `claude --agent-id …`),
+    //   2. `eval "exec $cmd"` — replaces this shell with the
+    //      command, so the pane's main process *is* the teammate.
+    //
+    // Key consequence: when the teammate exits, the pane's process
+    // exits, Zellij emits `CommandPaneExited`, and the plugin's
+    // lifecycle handler can decide whether to auto-close the pane.
+    // The old `argv = vec![shell]` form left the shell running after
+    // the teammate exited (leftover `$SHELL` prompts in the layout).
+    //
+    // Trust contract: the `read`-and-`exec` chain only handles text
+    // produced by trusted `send-keys` callers (per
+    // `docs/trust-model.md`). Hostile shell metacharacters in the
+    // payload could escape into `eval`. Acceptable under the v0.1
+    // single-producer model where the only `send-keys` source is
+    // Claude Code's TmuxBackend via this same shim.
+    let argv: Vec<String> = vec![
+        shell,
+        "-c".to_string(),
+        "IFS= read -r cmd && eval \"exec $cmd\"".to_string(),
+    ];
 
     // agent_id derivation: prefer `<window>@<session>` when both are
     // present (matches the canonical format the RPC docs use). Fall

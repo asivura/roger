@@ -66,7 +66,7 @@ sockets; we have one Zellij session per shim invocation).
 
 ## v0.1 limitations
 
-### Shell-prompt flash on teammate spawn
+### Spawn-then-exec placeholder (no longer flashes a shell prompt)
 
 `tmux new-session` / `new-window` / `split-window` create an *empty*
 pane in real tmux; TmuxBackend then issues a separate `send-keys` to
@@ -74,32 +74,60 @@ launch the teammate process. But the plugin's `team.spawn` requires
 non-empty `argv` (an empty argv has no command to actually run, so
 the plugin rejects it with `SPAWN_FAILED`).
 
-The shim works around this by spawning the user's `$SHELL` (with a
-`/bin/bash` fallback) as a placeholder. The follow-up `send-keys`
-then types `claude --agent-id …` into the shell, which executes the
-teammate. End-to-end this matches real tmux's behavior — pane id is
-returned immediately, teammate process starts in the next tick — at
-the cost of a brief shell-prompt flash that Claude Code doesn't read
-(it only consumes pane ids, not pane stdout).
+The shim works around this by spawning a small shell snippet:
 
-Two alternative designs were considered and deferred:
-- Shim-side deferred spawn (buffer the new-session params until
-  send-keys delivers the real command). Cleaner runtime but adds
-  cross-invocation state to a one-shot CLI, which is a tarpit.
-- `bash -c "read line; exec $line"` bootstrap. Clever but fragile
-  under shell metacharacters in argv.
+```
+$SHELL -c 'IFS= read -r cmd && eval "exec $cmd"'
+```
 
-If the shell-prompt flash becomes a real UX issue, the deferred
-design is the right next step.
+The shell waits for a single line on stdin (which the follow-up
+`send-keys` delivers — typically `claude --agent-id …`), then
+`eval`s `exec $cmd`, replacing the shell with the actual teammate
+process. Because of the `exec`, **the pane's main process is the
+teammate's claude, not a long-lived shell.** When claude exits, the
+pane process exits, Zellij emits `CommandPaneExited`, and the
+plugin's lifecycle handler decides whether to auto-close the pane
+(see "Auto-close on clean exit" below).
 
-### The `command` field on `team.list` shows `$SHELL`
+This trades the "brief shell-prompt flash" of the older
+`argv = [$SHELL]` form for a slightly cleverer shell snippet —
+which is fine because the trust contract on `send-keys` text limits
+the producers to roger-shim itself (see
+[`trust-model.md`](trust-model.md)).
 
-Because the shim spawns `$SHELL` as the placeholder, the plugin's
-`TeammatePaneInfo.command` ends up as `/bin/zsh` or `/bin/bash`
-rather than the eventual `claude --agent-id ...`. The pane *title*
-(set from `team.spawn`'s `name` parameter) is the right human-readable
+### Auto-close on clean exit (kept open on error)
+
+When a teammate's claude process exits, the plugin reacts based on
+the exit code:
+
+- **Exit code 0** (clean): plugin removes the entry from
+  `State::teammates` and calls `close_pane_with_id` — the pane goes
+  away. No clutter accumulates after `/team` shutdowns or normal
+  teammate completions.
+- **Exit code non-zero** (error): plugin marks the entry
+  `exited: true` and records the code, but keeps the pane open. The
+  operator can read scrollback to debug the crash, then close the
+  pane manually (`Alt+x` by default) — that fires `PaneClosed` and
+  cleans up state.
+- **Exit code not reported by Zellij** (None): conservative —
+  treated like a non-zero exit (pane stays open). Rare on Linux but
+  possible if the process was killed by a signal the OS didn't
+  surface.
+
+This means after a `/team` shutdown where every teammate finishes
+cleanly, the layout returns to just the lead pane with no leftover
+panes to close. Pre-#63 behavior — `argv = [$SHELL]` left the shell
+running with a prompt after claude exited — is no longer relevant.
+
+### The `command` field on `team.list` shows the spawn snippet
+
+Because the shim's `team.spawn` argv is the `bash -c '…'`
+spawn-then-exec snippet, the plugin's `TeammatePaneInfo.command`
+ends up as something like `/bin/bash -c IFS= read -r cmd …` rather
+than the eventual `claude --agent-id …`. The pane *title* (set
+from `team.spawn`'s `name` parameter) is the right human-readable
 signal. Accepting the wire-format lie for v0.1; a future PR could
-update `command` post-send-keys.
+update `command` after `send-keys` delivers the real text.
 
 ### No real integration test in CI
 
