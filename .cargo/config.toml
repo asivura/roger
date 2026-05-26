@@ -11,7 +11,7 @@
 [alias]
 # Plugin (Wasm target).
 build-wasm   = "build --release -p roger --target wasm32-wasip1"
-check-plugin = "clippy -p roger --target wasm32-wasip1 --all-features --lib --no-deps -- -D warnings"
+check-plugin = "clippy -p roger --target wasm32-wasip1 --all-features --bin roger --no-deps -- -D warnings"
 
 # Shim (host target).
 build-shim = "build --release -p roger-shim"

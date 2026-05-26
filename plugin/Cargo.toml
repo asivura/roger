@@ -11,14 +11,23 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
-[lib]
-crate-type = ["cdylib"]
+# The plugin is built as a binary (not a cdylib library) so the
+# wasm output gets `_start` + `__main_void` exports that Zellij
+# 0.44.3's plugin host expects. zellij-tile's `register_plugin!`
+# macro emits `fn main()`, which only becomes a `_start` export when
+# the crate type is a binary.
+[[bin]]
+name = "roger"
+path = "src/main.rs"
 
 [dependencies]
-# TODO: bump to 0.44 in Phase E (#13) to gain PermissionType::ReadPaneContents
-# for the observability features. zellij-tile 0.43.1 is the version verified
-# against the lab box's Zellij 0.44.3 today.
-zellij-tile = "0.43"
+# Bumped to 0.44 to match the host Zellij 0.44.3 plugin ABI. The host
+# rejects 0.43-built plugins with "could not find exported function"
+# (the wasm export contract changed between 0.43 and 0.44). The
+# ReadPaneContents permission becomes available with this bump but is
+# requested separately (it's a Phase E observability feature, not
+# load-bearing for v0.1).
+zellij-tile = "0.44"
 # Wire types for the RPC protocol. Lives in its own crate so it can
 # be tested on host target without the zellij-tile link error.
 roger-proto = { path = "../proto" }
