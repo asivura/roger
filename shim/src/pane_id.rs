@@ -16,14 +16,6 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PaneId(pub u32);
 
-impl PaneId {
-    /// Render back to the tmux wire form (`%<n>`), for printing on
-    /// stdout to satisfy `-F '#{pane_id}'`.
-    pub fn render(self) -> String {
-        format!("%{}", self.0)
-    }
-}
-
 impl fmt::Display for PaneId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "%{}", self.0)
@@ -56,7 +48,9 @@ impl std::error::Error for PaneIdParseError {}
 /// `MissingPrefix`.
 pub fn parse(s: &str) -> Result<PaneId, PaneIdParseError> {
     let digits = s.strip_prefix('%').ok_or(PaneIdParseError::MissingPrefix)?;
-    let n: u32 = digits.parse().map_err(|_| PaneIdParseError::InvalidNumber)?;
+    let n: u32 = digits
+        .parse()
+        .map_err(|_| PaneIdParseError::InvalidNumber)?;
     Ok(PaneId(n))
 }
 
@@ -113,8 +107,8 @@ mod tests {
 
     #[test]
     fn renders_back_to_percent_form() {
-        assert_eq!(PaneId(17).render(), "%17");
-        assert_eq!(PaneId(0).render(), "%0");
+        assert_eq!(format!("{}", PaneId(17)), "%17");
+        assert_eq!(format!("{}", PaneId(0)), "%0");
         assert_eq!(format!("{}", PaneId(42)), "%42");
     }
 }

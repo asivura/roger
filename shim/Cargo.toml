@@ -15,8 +15,10 @@ name = "tmux"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
-# Wire types for the RPC protocol; pulls in serde + serde_json transitively.
+# Wire types for the RPC protocol.
 roger-proto = { path = "../proto" }
+# `serde::de::DeserializeOwned` is the trait bound on rpc::call. No
+# `derive` feature needed here — derives live in roger-proto.
+serde = "1"
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
