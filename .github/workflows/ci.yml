@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-wasip1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --target wasm32-wasip1 -- -D warnings
+
+      - name: Build release
+        run: cargo build --release --target wasm32-wasip1
+
+      - name: Upload Wasm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: roger-wasm-${{ github.sha }}
+          path: target/wasm32-wasip1/release/roger.wasm
+          if-no-files-found: error
+          retention-days: 14
+
+  commit-lint:
+    name: commit lint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Lint PR commits
+        uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: .commitlintrc.yml

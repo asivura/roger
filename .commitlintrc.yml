@@ -1,0 +1,5 @@
+# commitlint config: enforces Conventional Commits on every PR commit.
+# See CONTRIBUTING.md (coming with #3) for the full convention. Runs in CI
+# via wagoid/commitlint-github-action@v6 in .github/workflows/ci.yml.
+extends:
+  - '@commitlint/config-conventional'
