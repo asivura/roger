@@ -34,7 +34,12 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets --target wasm32-wasip1 -- -D warnings
+        # --lib (not --all-targets) because the crate is a cdylib only.
+        # --all-features future-proofs as features are added.
+        # --no-deps lints our code, not transitive deps. Workspace-ready
+        # for #4: once shim/ joins, this command stays correct since
+        # --lib explicitly excludes bins.
+        run: cargo clippy --target wasm32-wasip1 --all-features --lib --no-deps -- -D warnings
 
       - name: Build release
         run: cargo build --release --target wasm32-wasip1
