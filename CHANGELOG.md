@@ -107,6 +107,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   on the PTY trust contract; what's a trust boundary vs not).
   Linked from `docs/rpc-protocol.md`. Closes #53.
   ([#56](https://github.com/asivura/roger/pull/56))
+- Spawn watchdog: `pending_spawns` entries now expire after
+  `SPAWN_WATCHDOG_TTL_SECS` (10s) if Zellij never emits the
+  matching `CommandPaneOpened`. The plugin uses `set_timeout` +
+  `Event::Timer` (the wasm-safe time primitives from
+  `zellij-tile 0.43.1`) to tick every 5s and sweep aged entries,
+  replying `SPAWN_FAILED` ("timed out waiting for
+  CommandPaneOpened") for each. Watchdog rearms only while
+  `pending_spawns` is non-empty, so an idle plugin doesn't wake
+  up unnecessarily. Closes #45 — removes the only entry from
+  the previous `Known limitations` section.
+  ([#57](https://github.com/asivura/roger/pull/57))
 
 ### Changed
 
@@ -161,12 +172,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Known limitations
 
-- `team.spawn` has no internal timeout: if Zellij fails to emit
-  `CommandPaneOpened` (currently the case when `argv[0]` doesn't
-  exist), the corresponding `PendingSpawn` state entry leaks and
-  the shim hangs until its own client-side read timeout. Tracked
-  as a follow-up watchdog issue.
-  ([#44](https://github.com/asivura/roger/pull/44))
+(none currently — the `team.spawn` internal-timeout limitation from
+PR #44 was resolved by PR #57.)
 
 ### Fixed
 
