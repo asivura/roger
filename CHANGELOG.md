@@ -52,6 +52,26 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   implemented. `team.list` returns currently-tracked teammate panes
   (empty until `team.spawn` populates the state map in #6).
   ([#35](https://github.com/asivura/roger/pull/35))
+- New `roger-proto` crate containing the wire types
+  (`Request`/`Response`/`ErrorPayload`/`TeammatePaneInfo`/`TeamListResult`/`error_codes`),
+  separated from the plugin crate so they can be unit-tested on the
+  host target without the `zellij-tile` link error. 10 unit tests
+  covering serde round-trip, the exactly-one-of `result`/`error`
+  invariant, JSON-RPC 2.0 reserved-range codes, and optional-field
+  omission. CI now runs `cargo test -p roger-proto` on every push
+  and PR.
+  ([#40](https://github.com/asivura/roger/pull/40))
+- `cargo test-proto` and `cargo check-proto` aliases in
+  `.cargo/config.toml`.
+  ([#40](https://github.com/asivura/roger/pull/40))
+
+### Changed
+
+- Renamed cargo alias `check-all` → `check-plugin` for consistency
+  with `check-shim` and `check-proto`. The old name was misleading
+  (it never checked all crates, only the plugin) and was getting
+  worse as the workspace grew.
+  ([#40](https://github.com/asivura/roger/pull/40))
 
 ### Changed
 

@@ -41,6 +41,11 @@ jobs:
       - name: Clippy (shim, host)
         run: cargo clippy -p roger-shim --all-features --all-targets --no-deps -- -D warnings
 
+      - name: Test proto (host)
+        # Pure crate, no zellij-tile — host-target tests work here
+        # where they can't on the plugin crate. See #36.
+        run: cargo test -p roger-proto
+
       - name: Build plugin (wasm)
         run: cargo build --release -p roger --target wasm32-wasip1
 
