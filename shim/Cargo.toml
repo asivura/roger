@@ -15,3 +15,8 @@ name = "tmux"
 path = "src/main.rs"
 
 [dependencies]
+clap = { version = "4", features = ["derive"] }
+# Wire types for the RPC protocol; pulls in serde + serde_json transitively.
+roger-proto = { path = "../proto" }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
