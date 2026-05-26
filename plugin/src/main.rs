@@ -480,9 +480,13 @@ impl State {
         match self.teammates.get_mut(&pane_id) {
             Some(t) => {
                 t.exited = true;
-                // Don't clobber a previously-recorded exit code if
-                // Zellij re-emits the event with `None` (defensive;
-                // correctness reviewer on PR #54).
+                // Defensive merge: a re-emission with `None` is
+                // ignored, but a re-emission with `Some(N)`
+                // *replaces* a previously-recorded code (typically
+                // the re-run path: `Some(1)` then `Some(0)` →
+                // `Some(0)` wins → pane auto-closes, which is the
+                // intended UX). Correctness reviewers on PRs #54
+                // and #63.
                 t.exit_code = exit_code.or(t.exit_code);
                 debug_assert!(
                     t.exited || t.exit_code.is_none(),
