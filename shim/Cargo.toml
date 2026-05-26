@@ -1,0 +1,17 @@
+[package]
+name = "roger-shim"
+version = "0.1.0"
+description = "tmux-compatible shim that translates Claude Code's TmuxBackend invocations into RPC calls to the roger Zellij plugin."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+# Binary name `tmux` so the shim shadows the real tmux when first in PATH.
+# Claude Code's TmuxBackend will then route its shell-outs through us.
+[[bin]]
+name = "tmux"
+path = "src/main.rs"
+
+[dependencies]

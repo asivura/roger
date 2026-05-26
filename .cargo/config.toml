@@ -1,11 +1,18 @@
-# Cargo aliases so the README, CONTRIBUTING.md (#3), and CI all
-# refer to the same canonical commands. Aliases stay in sync with
-# the workflow at .github/workflows/ci.yml.
+# Cargo aliases so the README, CONTRIBUTING.md, and CI all refer to
+# the same canonical commands. Aliases stay in sync with the workflow
+# at .github/workflows/ci.yml.
+#
+# The workspace has two crates: `roger` (the plugin, Wasm) and
+# `roger-shim` (the host-target shim binary named `tmux`). Aliases are
+# split per crate because no single cargo invocation can lint or build
+# a mixed-target workspace correctly (the plugin needs
+# --target wasm32-wasip1; the shim does not).
 
 [alias]
-# Release build of the Wasm plugin, matching CI exactly.
-build-wasm = "build --release --target wasm32-wasip1"
+# Plugin (Wasm target).
+build-wasm = "build --release -p roger --target wasm32-wasip1"
+check-all  = "clippy -p roger --target wasm32-wasip1 --all-features --lib --no-deps -- -D warnings"
 
-# Full local check: format + lint, matching CI exactly.
-# Run via `cargo check-all` before pushing.
-check-all  = "clippy --target wasm32-wasip1 --all-features --lib --no-deps -- -D warnings"
+# Shim (host target).
+build-shim = "build --release -p roger-shim"
+check-shim = "clippy -p roger-shim --all-features --all-targets --no-deps -- -D warnings"

@@ -28,28 +28,30 @@ source "$HOME/.cargo/env"
 
 ## Build and verify
 
-The repo's `.cargo/config.toml` defines two aliases that match what
-CI runs:
+The repo's `.cargo/config.toml` defines four aliases that match what
+CI runs. Two per crate (plugin = Wasm target, shim = host target):
 
 ```bash
-# Release build of the Wasm plugin
-cargo build-wasm
+# Plugin (the Wasm artifact)
+cargo build-wasm    # release build  -> target/wasm32-wasip1/release/roger.wasm
+cargo check-all     # clippy with -D warnings
 
-# Full lint pass: clippy --target wasm32-wasip1 ... -D warnings
-cargo check-all
+# Shim (the host-target `tmux`-shaped binary)
+cargo build-shim    # release build  -> target/release/tmux
+cargo check-shim    # clippy with -D warnings
 ```
 
 Also useful directly:
 
 ```bash
-cargo fmt --all          # format
+cargo fmt --all              # format
 cargo fmt --all -- --check   # check formatting (what CI does)
-cargo test               # run tests (once any exist)
+cargo test                   # run tests (once any exist)
 ```
 
 **Verify before pushing**: run `cargo fmt --all -- --check`,
-`cargo check-all`, and `cargo build-wasm` locally. If all three are
-clean, CI will be clean.
+`cargo check-all`, `cargo check-shim`, `cargo build-wasm`, and
+`cargo build-shim` locally. If all five are clean, CI will be clean.
 
 ## Branch naming
 
