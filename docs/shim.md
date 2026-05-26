@@ -107,7 +107,9 @@ the exit code:
 - **Exit code non-zero** (error): plugin marks the entry
   `exited: true` and records the code, but keeps the pane open. The
   operator can read scrollback to debug the crash, then close the
-  pane manually (`Alt+x` by default) — that fires `PaneClosed` and
+  pane manually (whatever your Zellij keybinding config uses for
+  close-pane — stock default is the `Ctrl+p` then `x` chord) — that
+  fires `PaneClosed` and
   cleans up state.
 - **Exit code not reported by Zellij** (None): conservative —
   treated like a non-zero exit (pane stays open). Rare on Linux but

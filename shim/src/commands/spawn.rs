@@ -1,17 +1,13 @@
 //! `tmux new-session` / `new-window` / `split-window`
 //!
 //! All three create an empty pane in real tmux; TmuxBackend then drives
-//! `send-keys` separately to launch the teammate process. We can't
-//! create an empty pane through `team.spawn` (the plugin's
-//! `open_command_pane` needs a real command), so we spawn the user's
-//! `$SHELL` as a placeholder process. The follow-up `send-keys` then
-//! types `claude --agent-id ...` into that shell, which exec's the
-//! teammate. This matches real tmux's pane-then-command flow with a
-//! brief shell-prompt flash that Claude doesn't read.
+//! `send-keys` separately to launch the teammate process. Because
+//! `team.spawn` requires non-empty argv, we spawn the
+//! [`SPAWN_PLACEHOLDER_SNIPPET`] shell snippet — see its docstring
+//! for the WHY and the trust-contract caveat.
 //!
-//! See `docs/shim.md`'s "v0.1 limitations" section for why this is
-//! the current approach and what option 2 / option 3 would look like
-//! in a future iteration.
+//! See `docs/shim.md` for the operator-facing description of this
+//! flow and the resulting auto-close-on-clean-exit behavior.
 
 use std::env;
 use std::process::ExitCode;
@@ -23,6 +19,24 @@ use crate::commands::report_rpc_error;
 use crate::pane_id::PaneId;
 use crate::rpc;
 
+/// Shell snippet spawned as the pane's main process. It:
+///
+/// 1. reads one line from stdin (which the follow-up `send-keys`
+///    delivers — typically `claude --agent-id …`),
+/// 2. `eval`s `exec $cmd`, replacing this shell with the command.
+///
+/// After step 2 the pane's main process *is* the teammate, so when
+/// the teammate exits Zellij emits `CommandPaneExited` and the
+/// plugin's lifecycle handler decides whether to auto-close the
+/// pane.
+///
+/// **Trust contract:** `eval` interprets `$cmd` with full shell
+/// semantics, so hostile shell metacharacters in the `send-keys`
+/// payload would escape. Acceptable under the v0.1 single-producer
+/// model (Claude Code's TmuxBackend via roger-shim is the only
+/// expected source). See `docs/trust-model.md`.
+const SPAWN_PLACEHOLDER_SNIPPET: &str = r#"IFS= read -r cmd && eval "exec $cmd""#;
+
 pub fn run(_subcommand: &str, args: &[String]) -> ExitCode {
     let parsed = parse_spawn_args(args);
 
@@ -31,32 +45,10 @@ pub fn run(_subcommand: &str, args: &[String]) -> ExitCode {
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| "/".to_string());
 
-    // The plugin needs non-empty `argv`. Real `tmux new-session` /
-    // `new-window` / `split-window` create empty panes (running
-    // `$SHELL`); the follow-up `send-keys` is what launches the
-    // teammate. We can't create an empty pane through `team.spawn`,
-    // so we spawn a small shell snippet that:
-    //   1. waits for one line from stdin (which `send-keys` will
-    //      deliver — typically `claude --agent-id …`),
-    //   2. `eval "exec $cmd"` — replaces this shell with the
-    //      command, so the pane's main process *is* the teammate.
-    //
-    // Key consequence: when the teammate exits, the pane's process
-    // exits, Zellij emits `CommandPaneExited`, and the plugin's
-    // lifecycle handler can decide whether to auto-close the pane.
-    // The old `argv = vec![shell]` form left the shell running after
-    // the teammate exited (leftover `$SHELL` prompts in the layout).
-    //
-    // Trust contract: the `read`-and-`exec` chain only handles text
-    // produced by trusted `send-keys` callers (per
-    // `docs/trust-model.md`). Hostile shell metacharacters in the
-    // payload could escape into `eval`. Acceptable under the v0.1
-    // single-producer model where the only `send-keys` source is
-    // Claude Code's TmuxBackend via this same shim.
     let argv: Vec<String> = vec![
         shell,
         "-c".to_string(),
-        "IFS= read -r cmd && eval \"exec $cmd\"".to_string(),
+        SPAWN_PLACEHOLDER_SNIPPET.to_string(),
     ];
 
     // agent_id derivation: prefer `<window>@<session>` when both are
