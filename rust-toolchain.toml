@@ -1,0 +1,12 @@
+# rust-toolchain.toml — pinned via rustup on first cargo invocation.
+#
+# Channel intentionally left floating ("stable") so we track the
+# Rust release train without manual bumps; CI uses the same setting
+# (dtolnay/rust-toolchain@stable in .github/workflows/ci.yml).
+#
+# The wasm32-wasip1 target is auto-installed on first build, which
+# eliminates "do I need to install the target?" as a question for
+# new contributors.
+[toolchain]
+channel = "stable"
+targets = ["wasm32-wasip1"]

@@ -1,5 +1,12 @@
 # commitlint config: enforces Conventional Commits on every PR commit.
 # See CONTRIBUTING.md (coming with #3) for the full convention. Runs in CI
-# via wagoid/commitlint-github-action@v6 in .github/workflows/ci.yml.
+# via wagoid/commitlint-github-action in .github/workflows/ci.yml.
 extends:
   - '@commitlint/config-conventional'
+rules:
+  # Disable body / footer line-length limits. The preset default (100) is
+  # painful for pasting cargo output, stack traces, or `git diff`
+  # excerpts into commit bodies; subject is still capped at 72. Same
+  # decision cargo, kubernetes, and rust-analyzer make.
+  body-max-line-length: [0, 'always']
+  footer-max-line-length: [0, 'always']
